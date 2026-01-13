@@ -4,9 +4,7 @@ import type { Item, Routine, WeekKey } from '../types';
 import { generateDummyData, DEFAULT_NOW } from '../data/dummyData';
 import {
     getWeekKey,
-    addWeeks,
-    compareWeekKeys,
-    isWithin7Days
+    compareWeekKeys
 } from '../utils/timeUtils';
 import dayjs from 'dayjs';
 
@@ -21,8 +19,12 @@ interface TaskStore {
     uncompleteItem: (id: string) => void;
     startItem: (id: string) => void;
     incrementProgress: (id: string, minutes: number) => void;
+    incrementOccurrence: (id: string) => void; // For multi-occurrence tasks
+    decrementOccurrence: (id: string) => void; // For undoing multi-occurrence
     reorderItem: (id: string, newOrderIndex: number, newWeek?: WeekKey) => void;
     moveToWeek: (id: string, week: WeekKey) => void;
+    archiveItem: (id: string) => void;
+    unarchiveItem: (id: string) => void;
     executeRollover: () => void;
     advanceTime: (days: number) => void;
     setTime: (isoTime: string) => void;
@@ -32,7 +34,7 @@ interface TaskStore {
     // Computed helpers
     getPresentWeek: () => WeekKey;
     getVisibleItems: () => Item[];
-    getAllCompletedItems: () => Item[];
+    getArchivedItems: () => Item[];
 }
 
 const initialData = generateDummyData(DEFAULT_NOW);
@@ -61,24 +63,11 @@ export const useTaskStore = create<TaskStore>()(
             },
 
             uncompleteItem: (id: string) => {
-                const { currentTime, allowUncomplete, getPresentWeek } = get();
-                if (!allowUncomplete) return;
-
-                const presentWeek = getPresentWeek();
-
                 set((state) => {
                     const item = state.items.find((i) => i.id === id);
                     if (!item || item.status !== 'complete') return state;
-                    if (!item.completedAt || !isWithin7Days(item.completedAt, currentTime)) {
-                        return state;
-                    }
 
-                    // Get max order index in present week incomplete items
-                    const presentIncomplete = state.items.filter(
-                        (i) => i.week === presentWeek && i.status === 'incomplete'
-                    );
-                    const maxOrder = Math.max(0, ...presentIncomplete.map((i) => i.orderIndex));
-
+                    // Keep item in same position, just change status
                     return {
                         items: state.items.map((i) =>
                             i.id === id
@@ -86,8 +75,6 @@ export const useTaskStore = create<TaskStore>()(
                                     ...i,
                                     status: 'incomplete' as const,
                                     completedAt: undefined,
-                                    week: presentWeek,
-                                    orderIndex: maxOrder + 1,
                                 }
                                 : i
                         ),
@@ -103,7 +90,6 @@ export const useTaskStore = create<TaskStore>()(
                     const item = state.items.find((i) => i.id === id);
                     if (!item || item.week === presentWeek) return state;
 
-                    // Get max order index in present week incomplete items
                     const presentIncomplete = state.items.filter(
                         (i) => i.week === presentWeek && i.status === 'incomplete'
                     );
@@ -124,6 +110,7 @@ export const useTaskStore = create<TaskStore>()(
             },
 
             incrementProgress: (id: string, minutes: number) => {
+                // Simply add minutes, don't auto-move or auto-uncomplete
                 set((state) => ({
                     items: state.items.map((item) =>
                         item.id === id
@@ -133,24 +120,69 @@ export const useTaskStore = create<TaskStore>()(
                 }));
             },
 
+            incrementOccurrence: (id: string) => {
+                const { currentTime } = get();
+                set((state) => ({
+                    items: state.items.map((item) => {
+                        if (item.id !== id) return item;
+
+                        const currentCount = item.completedCount ?? 0;
+                        const targetCount = item.targetCount ?? 1;
+                        const newCount = currentCount + 1;
+
+                        // If we've completed all occurrences, mark as complete
+                        if (newCount >= targetCount) {
+                            return {
+                                ...item,
+                                completedCount: newCount,
+                                status: 'complete' as const,
+                                completedAt: currentTime,
+                            };
+                        }
+
+                        return {
+                            ...item,
+                            completedCount: newCount,
+                        };
+                    }),
+                }));
+            },
+
+            decrementOccurrence: (id: string) => {
+                set((state) => ({
+                    items: state.items.map((item) => {
+                        if (item.id !== id) return item;
+
+                        const currentCount = item.completedCount ?? 0;
+                        if (currentCount <= 0) return item;
+
+                        return {
+                            ...item,
+                            completedCount: currentCount - 1,
+                            // If was complete, mark as incomplete
+                            status: 'incomplete' as const,
+                            completedAt: undefined,
+                        };
+                    }),
+                }));
+            },
+
             reorderItem: (id: string, newOrderIndex: number, newWeek?: WeekKey) => {
                 set((state) => {
                     const item = state.items.find((i) => i.id === id);
-                    if (!item || item.status === 'complete') return state;
+                    if (!item) return state;
 
                     const targetWeek = newWeek ?? item.week;
 
-                    // Get all incomplete items in target week, sorted by order
+                    // Include ALL items in the week (not just incomplete) for proper reordering
                     const weekItems = state.items
-                        .filter((i) => i.week === targetWeek && i.status === 'incomplete' && i.id !== id)
+                        .filter((i) => i.week === targetWeek && !i.archived && i.id !== id)
                         .sort((a, b) => a.orderIndex - b.orderIndex);
 
-                    // Insert at new position and recalculate all indices
                     const reorderedItems = [...weekItems];
                     const insertIndex = Math.min(newOrderIndex, reorderedItems.length);
                     reorderedItems.splice(insertIndex, 0, { ...item, week: targetWeek });
 
-                    // Create update map
                     const updates = new Map<string, { orderIndex: number; week: WeekKey }>();
                     reorderedItems.forEach((i, idx) => {
                         updates.set(i.id, { orderIndex: idx, week: targetWeek });
@@ -173,7 +205,6 @@ export const useTaskStore = create<TaskStore>()(
                     const item = state.items.find((i) => i.id === id);
                     if (!item) return state;
 
-                    // Get max order index in target week incomplete items
                     const weekIncomplete = state.items.filter(
                         (i) => i.week === week && i.status === 'incomplete'
                     );
@@ -192,14 +223,12 @@ export const useTaskStore = create<TaskStore>()(
             executeRollover: () => {
                 set((state) => {
                     const now = dayjs(state.currentTime);
-                    // Move to next Sunday midnight
                     const daysUntilSunday = (7 - now.day()) % 7 || 7;
                     const newTime = now.add(daysUntilSunday, 'day').startOf('day').toISOString();
                     const oldPresentWeek = getWeekKey(state.currentTime);
                     const newPresentWeek = getWeekKey(newTime);
 
                     if (oldPresentWeek === newPresentWeek) {
-                        // Already at Sunday, advance one more week
                         const advancedTime = dayjs(newTime).add(7, 'day').toISOString();
                         return executeRolloverLogic(state, getWeekKey(advancedTime), advancedTime);
                     }
@@ -231,49 +260,66 @@ export const useTaskStore = create<TaskStore>()(
                 });
             },
 
+            archiveItem: (id: string) => {
+                set((state) => ({
+                    items: state.items.map((item) =>
+                        item.id === id
+                            ? { ...item, archived: true }
+                            : item
+                    ),
+                }));
+            },
+
+            unarchiveItem: (id: string) => {
+                set((state) => {
+                    const item = state.items.find((i) => i.id === id);
+                    if (!item) return state;
+
+                    // Move to top of its week (orderIndex 0)
+                    // Shift other items in that week down
+                    const updatedItems = state.items.map((i) => {
+                        if (i.id === id) {
+                            return { ...i, archived: false, orderIndex: 0 };
+                        }
+                        if (i.week === item.week && !i.archived) {
+                            return { ...i, orderIndex: i.orderIndex + 1 };
+                        }
+                        return i;
+                    });
+
+                    return { items: updatedItems };
+                });
+            },
+
             getPresentWeek: () => {
                 const { currentTime } = get();
                 return getWeekKey(currentTime);
             },
 
             getVisibleItems: () => {
-                const { items, currentTime } = get();
-                const presentWeek = getWeekKey(currentTime);
+                const { items } = get();
 
                 return items
-                    .filter((item) => {
-                        // Show all incomplete items
-                        if (item.status === 'incomplete') return true;
-                        // Show completed items within 7 days
-                        if (item.completedAt && isWithin7Days(item.completedAt, currentTime)) {
-                            return true;
-                        }
-                        return false;
-                    })
+                    .filter((item) => !item.archived) // Only show non-archived items
                     .sort((a, b) => {
-                        // First sort by week
                         const weekCompare = compareWeekKeys(a.week, b.week);
                         if (weekCompare !== 0) return weekCompare;
 
-                        // Within same week: completed first (by completedAt oldest→newest)
-                        if (a.status === 'complete' && b.status === 'complete') {
-                            return new Date(a.completedAt!).getTime() - new Date(b.completedAt!).getTime();
-                        }
-                        if (a.status === 'complete') return -1;
-                        if (b.status === 'complete') return 1;
-
-                        // Both incomplete: sort by orderIndex
+                        // Keep items in their position (by orderIndex)
                         return a.orderIndex - b.orderIndex;
                     });
             },
 
-            getAllCompletedItems: () => {
+            getArchivedItems: () => {
                 const { items } = get();
                 return items
-                    .filter((item) => item.status === 'complete')
+                    .filter((item) => item.archived)
                     .sort((a, b) => {
-                        // Reverse chronological (newest first)
-                        return new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime();
+                        // Sort archived by completion time, most recent first
+                        if (a.completedAt && b.completedAt) {
+                            return new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime();
+                        }
+                        return 0;
                     });
             },
         }),
@@ -289,7 +335,6 @@ export const useTaskStore = create<TaskStore>()(
     )
 );
 
-// Helper function for rollover logic
 function executeRolloverLogic(
     state: { items: Item[]; routines: Routine[]; currentTime: string; allowUncomplete: boolean },
     newPresentWeek: WeekKey,
@@ -297,19 +342,15 @@ function executeRolloverLogic(
 ): { items: Item[]; currentTime: string } {
     const oldPresentWeek = getWeekKey(state.currentTime);
 
-    // Get incomplete items from old present week
     const carryOverItems = state.items
         .filter((i) => i.week === oldPresentWeek && i.status === 'incomplete')
         .sort((a, b) => a.orderIndex - b.orderIndex);
 
-    // Get items already scheduled for new present week
     const newWeekItems = state.items
         .filter((i) => i.week === newPresentWeek && i.status === 'incomplete')
         .sort((a, b) => a.orderIndex - b.orderIndex);
 
-    // Create new order: carry-over items first, then pre-scheduled items
     const updatedItems = state.items.map((item) => {
-        // Move carry-over items to new week
         const carryIndex = carryOverItems.findIndex((c) => c.id === item.id);
         if (carryIndex !== -1) {
             return {
@@ -319,7 +360,6 @@ function executeRolloverLogic(
             };
         }
 
-        // Adjust order of pre-scheduled items
         const newWeekIndex = newWeekItems.findIndex((n) => n.id === item.id);
         if (newWeekIndex !== -1) {
             return {

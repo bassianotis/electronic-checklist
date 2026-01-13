@@ -1,0 +1,299 @@
+import React from 'react';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import type { Item, Routine, WeekKey } from '../types';
+import {
+    relativeLabel,
+    formatDate,
+    isFutureWeek
+} from '../utils/timeUtils';
+import { useTaskStore } from '../store/store';
+import dayjs from 'dayjs';
+
+interface TaskCardProps {
+    item: Item;
+    routine?: Routine;
+    presentWeek: WeekKey;
+    currentTime: string;
+}
+
+// Icons
+const GripIcon = () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="9" cy="5" r="1" fill="currentColor" />
+        <circle cx="9" cy="12" r="1" fill="currentColor" />
+        <circle cx="9" cy="19" r="1" fill="currentColor" />
+        <circle cx="15" cy="5" r="1" fill="currentColor" />
+        <circle cx="15" cy="12" r="1" fill="currentColor" />
+        <circle cx="15" cy="19" r="1" fill="currentColor" />
+    </svg>
+);
+
+const CheckIcon = () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+        <polyline points="20 6 9 17 4 12" />
+    </svg>
+);
+
+// Clock-style progress circle component (yellow outline with yellow fill sweeping clockwise)
+interface ClockProgressProps {
+    progress: number; // 0 to 1
+    size: number;
+}
+
+const ClockProgress: React.FC<ClockProgressProps> = ({ progress, size }) => {
+    // Create a conic gradient that fills clockwise from the top (12 o'clock)
+    const degrees = progress * 360;
+
+    return (
+        <div
+            className="clock-progress-container"
+            style={{ width: size, height: size }}
+        >
+            {/* Yellow fill that sweeps clockwise */}
+            <div
+                className="clock-progress-fill"
+                style={{
+                    background: `conic-gradient(
+                        from 0deg,
+                        var(--wk-present) 0deg,
+                        var(--wk-present) ${degrees}deg,
+                        transparent ${degrees}deg,
+                        transparent 360deg
+                    )`
+                }}
+            />
+        </div>
+    );
+};
+
+export const TaskCard: React.FC<TaskCardProps> = ({
+    item,
+    routine,
+    presentWeek,
+    currentTime,
+}) => {
+    const { completeItem, uncompleteItem, incrementProgress, incrementOccurrence, decrementOccurrence, archiveItem } = useTaskStore();
+
+    const isComplete = item.status === 'complete';
+    const isIncomplete = item.status === 'incomplete';
+    const isFuture = isFutureWeek(item.week, presentWeek);
+    const isPresent = item.week === presentWeek;
+    const canDrag = true; // All items can be dragged
+
+    // Multi-occurrence logic
+    const isMultiOccurrence = item.targetCount !== undefined && item.targetCount > 1;
+    const targetCount = item.targetCount ?? 1;
+    const completedCount = item.completedCount ?? 0;
+
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging,
+    } = useSortable({
+        id: item.id,
+        disabled: !canDrag,
+    });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+    };
+
+    // Determine chip tint class for schedule
+    let scheduleChipClass = '';
+    if (isPresent && isIncomplete) {
+        scheduleChipClass = 'present';
+    } else if (isFuture) {
+        scheduleChipClass = 'future';
+    }
+
+    // Due date logic
+    const hasDueDate = item.hasDueDate && item.dueDateISO;
+    const isDueDatePast = hasDueDate && dayjs(item.dueDateISO).isBefore(dayjs(currentTime));
+    const isDueDateSoon = hasDueDate && !isDueDatePast &&
+        dayjs(item.dueDateISO).diff(dayjs(currentTime), 'day') <= 3;
+
+    // Progress logic for time-based items - only show if there's a goal
+    const hasTimeProgress = item.minutesGoal !== undefined && item.minutesGoal > 0;
+    const currentMinutes = item.minutes ?? 0;
+    const goalMinutes = item.minutesGoal ?? 0;
+    // Only calculate progress if there's a goal, otherwise 0
+    const timeProgress = hasTimeProgress ? Math.min(1, currentMinutes / goalMinutes) : 0;
+
+    // Always allow un-complete for completed items
+    const canUncomplete = isComplete;
+
+    const handleStatusClick = () => {
+        if (isIncomplete) {
+            completeItem(item.id);
+        } else if (canUncomplete) {
+            uncompleteItem(item.id);
+        }
+    };
+
+    // Determine action indicator state
+    // Complete: green check
+    // Future: blue filled circle (not needing action)
+    // Present with no progress: yellow empty circle
+    // Present with progress (including 100%): yellow filled/partial
+    let actionIndicatorType: 'complete' | 'future' | 'due-empty' | 'due-progress' = 'due-empty';
+
+    if (isComplete) {
+        actionIndicatorType = 'complete';
+    } else if (isFuture) {
+        actionIndicatorType = 'future';
+    } else if (timeProgress > 0) {
+        // Show progress indicator for any progress (including 100%)
+        actionIndicatorType = 'due-progress';
+    } else {
+        actionIndicatorType = 'due-empty';
+    }
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={style}
+            className={`task-card ${isComplete ? 'completed' : ''} ${isDragging ? 'dragging' : ''}`}
+            data-item-id={item.id}
+            data-week={item.week}
+        >
+            {/* Drag handle */}
+            <div
+                className={`drag-handle ${!canDrag ? 'disabled' : ''}`}
+                {...(canDrag ? { ...attributes, ...listeners } : {})}
+                aria-label={canDrag ? 'Drag to reorder' : 'Cannot reorder completed items'}
+            >
+                <GripIcon />
+            </div>
+
+            {/* Content */}
+            <div className="task-content">
+                <div className="task-title" title={item.title}>
+                    {item.title}
+                </div>
+
+                <div className="task-meta">
+                    {/* Schedule chip */}
+                    <span className={`chip schedule ${scheduleChipClass}`}>
+                        {relativeLabel(item.week, presentWeek)}
+                    </span>
+
+                    {/* Due date chip */}
+                    {hasDueDate && (
+                        <span className={`chip due-date ${!isDueDatePast && !isDueDateSoon ? 'future' : ''}`}>
+                            Due {formatDate(item.dueDateISO!, 'MMM D')}
+                        </span>
+                    )}
+
+                    {/* Routine chip */}
+                    {routine && (
+                        <span className="chip routine">
+                            {routine.cadence}
+                        </span>
+                    )}
+
+                    {/* Time progress display */}
+                    {hasTimeProgress && isIncomplete && (
+                        <span className={`chip time-progress ${timeProgress >= 1 ? 'complete' : ''}`}>
+                            {currentMinutes}{goalMinutes > 0 ? `/${goalMinutes}` : ''} min
+                        </span>
+                    )}
+
+                    {/* Completed time - only show if there was a goal */}
+                    {isComplete && hasTimeProgress && item.minutes !== undefined && (
+                        <span className="chip time-logged">
+                            {item.minutes} min
+                        </span>
+                    )}
+                </div>
+            </div>
+
+            {/* Right-side action area */}
+            <div className="task-actions">
+                {/* Time increment buttons - show for all items with time tracking */}
+                {hasTimeProgress && (
+                    <div className="time-btns">
+                        <button
+                            className="time-btn"
+                            onClick={() => incrementProgress(item.id, 15)}
+                            aria-label="Add 15 minutes"
+                        >
+                            +15
+                        </button>
+                        <button
+                            className="time-btn"
+                            onClick={() => incrementProgress(item.id, 30)}
+                            aria-label="Add 30 minutes"
+                        >
+                            +30
+                        </button>
+                    </div>
+                )}
+
+                {/* Archive button for completed items - before indicator for consistent layout */}
+                {isComplete && (
+                    <button
+                        className="archive-btn"
+                        onClick={() => archiveItem(item.id)}
+                        aria-label="Archive item"
+                    >
+                        Archive
+                    </button>
+                )}
+
+                {/* Multi-occurrence: show multiple boxes */}
+                {isMultiOccurrence && !isComplete && (
+                    <div className="occurrence-boxes">
+                        {Array.from({ length: targetCount }).map((_, idx) => {
+                            const isBoxCompleted = idx < completedCount;
+                            const isNextToComplete = idx === completedCount;
+                            const isLastCompleted = idx === completedCount - 1;
+
+                            return (
+                                <button
+                                    key={idx}
+                                    className={`occurrence-box ${isBoxCompleted ? 'completed' : ''}`}
+                                    onClick={() => {
+                                        if (isNextToComplete) {
+                                            incrementOccurrence(item.id);
+                                        } else if (isLastCompleted) {
+                                            decrementOccurrence(item.id);
+                                        }
+                                    }}
+                                    disabled={!isNextToComplete && !isLastCompleted}
+                                    aria-label={`Occurrence ${idx + 1} of ${targetCount}`}
+                                >
+                                    {isBoxCompleted && <CheckIcon />}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {/* Action indicator / complete button - for non-multi-occurrence or completed items */}
+                {(!isMultiOccurrence || isComplete) && (
+                    <button
+                        className={`action-indicator ${actionIndicatorType}`}
+                        onClick={handleStatusClick}
+                        disabled={false}
+                        aria-label={isComplete ? 'Mark as incomplete' : 'Mark as complete'}
+                    >
+                        {actionIndicatorType === 'complete' && <CheckIcon />}
+                        {actionIndicatorType === 'future' && <div className="filled-dot" />}
+                        {actionIndicatorType === 'due-progress' && (
+                            <ClockProgress
+                                progress={timeProgress}
+                                size={24}
+                            />
+                        )}
+                        {actionIndicatorType === 'due-empty' && <div className="empty-ring" />}
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+};
