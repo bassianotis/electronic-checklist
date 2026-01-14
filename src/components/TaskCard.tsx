@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Item, Routine, WeekKey } from '../types';
@@ -15,6 +15,7 @@ interface TaskCardProps {
     routine?: Routine;
     presentWeek: WeekKey;
     currentTime: string;
+    showScheduleChip?: boolean; // Show "This week"/"Next week" etc. chip (default: false)
 }
 
 // Icons
@@ -72,8 +73,18 @@ export const TaskCard: React.FC<TaskCardProps> = ({
     routine,
     presentWeek,
     currentTime,
+    showScheduleChip = false,
 }) => {
-    const { completeItem, uncompleteItem, incrementProgress, incrementOccurrence, decrementOccurrence, archiveItem } = useTaskStore();
+    const { completeItem, uncompleteItem, incrementProgress, incrementOccurrence, decrementOccurrence, archiveItem, updateItem } = useTaskStore();
+    const [isEditing, setIsEditing] = useState(false);
+    const [editTitle, setEditTitle] = useState(item.title);
+    const [showEditOptions, setShowEditOptions] = useState(false);
+    const [editMinutesGoal, setEditMinutesGoal] = useState<number | undefined>(item.minutesGoal);
+    const [editTargetCount, setEditTargetCount] = useState<number | undefined>(item.targetCount);
+    const [editDueDateISO, setEditDueDateISO] = useState<string | undefined>(item.dueDateISO);
+    const [editNotes, setEditNotes] = useState<string>(item.notes || '');
+    const editInputRef = useRef<HTMLInputElement>(null);
+    const cardRef = useRef<HTMLDivElement>(null);
 
     const isComplete = item.status === 'complete';
     const isIncomplete = item.status === 'incomplete';
@@ -123,17 +134,77 @@ export const TaskCard: React.FC<TaskCardProps> = ({
     const goalMinutes = item.minutesGoal ?? 0;
     // Only calculate progress if there's a goal, otherwise 0
     const timeProgress = hasTimeProgress ? Math.min(1, currentMinutes / goalMinutes) : 0;
+    // Can only complete time-based tasks if goal is met
+    const timeGoalMet = !hasTimeProgress || currentMinutes >= goalMinutes;
 
     // Always allow un-complete for completed items
     const canUncomplete = isComplete;
 
     const handleStatusClick = () => {
-        if (isIncomplete) {
+        if (isIncomplete && timeGoalMet) {
             completeItem(item.id);
         } else if (canUncomplete) {
             uncompleteItem(item.id);
         }
     };
+
+    // Edit mode handlers - clicking card opens editor
+    const handleCardClick = (e: React.MouseEvent) => {
+        // Don't open editor if already editing
+        if (isEditing) return;
+
+        setIsEditing(true);
+        setEditTitle(item.title);
+        setEditMinutesGoal(item.minutesGoal);
+        setEditTargetCount(item.targetCount);
+        // Convert ISO to YYYY-MM-DD for date input
+        setEditDueDateISO(item.dueDateISO ? item.dueDateISO.split('T')[0] : undefined);
+        setEditNotes(item.notes || '');
+        setTimeout(() => editInputRef.current?.focus(), 0);
+    };
+
+    const handleEditSave = () => {
+        if (editTitle.trim()) {
+            updateItem(item.id, {
+                title: editTitle.trim(),
+                minutesGoal: editMinutesGoal ?? 0, // Empty field = 0 to clear time goal
+                targetCount: editTargetCount,
+                dueDateISO: editDueDateISO,
+                notes: editNotes,
+            });
+        }
+        setIsEditing(false);
+        setShowEditOptions(false);
+    };
+
+    const handleEditCancel = () => {
+        setIsEditing(false);
+        setShowEditOptions(false);
+        setEditTitle(item.title);
+    };
+
+    const handleEditKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleEditSave();
+        } else if (e.key === 'Escape') {
+            handleEditCancel();
+        }
+    };
+
+    // Click outside to save
+    useEffect(() => {
+        if (!isEditing) return;
+
+        const handleClickOutside = (e: MouseEvent) => {
+            if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
+                handleEditSave();
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [isEditing, editTitle]);
 
     // Determine action indicator state
     // Complete: green check
@@ -155,68 +226,146 @@ export const TaskCard: React.FC<TaskCardProps> = ({
 
     return (
         <div
-            ref={setNodeRef}
+            ref={(el) => {
+                setNodeRef(el);
+                (cardRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+            }}
             style={style}
-            className={`task-card ${isComplete ? 'completed' : ''} ${isDragging ? 'dragging' : ''}`}
+            className={`task-card ${isComplete ? 'completed' : ''} ${isDragging ? 'dragging' : ''} ${isEditing ? 'editing' : ''}`}
             data-item-id={item.id}
             data-week={item.week}
+            onClick={handleCardClick}
         >
-            {/* Drag handle */}
+            {/* Drag handle - stops propagation to prevent opening editor */}
             <div
                 className={`drag-handle ${!canDrag ? 'disabled' : ''}`}
                 {...(canDrag ? { ...attributes, ...listeners } : {})}
                 aria-label={canDrag ? 'Drag to reorder' : 'Cannot reorder completed items'}
+                onClick={(e) => e.stopPropagation()}
             >
                 <GripIcon />
             </div>
 
             {/* Content */}
             <div className="task-content">
-                <div className="task-title" title={item.title}>
-                    {item.title}
-                </div>
+                {isEditing ? (
+                    <>
+                        <input
+                            ref={editInputRef}
+                            type="text"
+                            className="editor-title-input"
+                            value={editTitle}
+                            onChange={(e) => setEditTitle(e.target.value)}
+                            onKeyDown={handleEditKeyDown}
+                        />
+                        {/* Notes input - positioned where notes display */}
+                        <input
+                            type="text"
+                            className="editor-notes-input"
+                            placeholder="Add notes (140 chars max)"
+                            maxLength={140}
+                            value={editNotes}
+                            onChange={(e) => setEditNotes(e.target.value)}
+                            onKeyDown={handleEditKeyDown}
+                        />
+                        {/* Edit options shown directly when editing */}
+                        <div className="inline-editor-options">
+                            <div className="editor-option">
+                                <label>⏱️</label>
+                                <input
+                                    type="number"
+                                    placeholder="min"
+                                    min="0"
+                                    value={editMinutesGoal ?? ''}
+                                    onChange={(e) => setEditMinutesGoal(e.target.value ? parseInt(e.target.value) : undefined)}
+                                    onKeyDown={handleEditKeyDown}
+                                />
+                            </div>
+                            <div className="editor-option">
+                                <label>🔁</label>
+                                <input
+                                    type="number"
+                                    placeholder="×"
+                                    min="1"
+                                    value={editTargetCount ?? ''}
+                                    onChange={(e) => setEditTargetCount(e.target.value ? parseInt(e.target.value) : undefined)}
+                                    onKeyDown={handleEditKeyDown}
+                                />
+                            </div>
+                            <div className="editor-option">
+                                <label>📅</label>
+                                <input
+                                    type="date"
+                                    value={editDueDateISO ?? ''}
+                                    onChange={(e) => setEditDueDateISO(e.target.value || undefined)}
+                                    onKeyDown={handleEditKeyDown}
+                                />
+                            </div>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <div className="task-title" title={item.title}>
+                            {item.title}
+                        </div>
+                        {item.notes && (
+                            <div className="task-notes">{item.notes}</div>
+                        )}
 
-                <div className="task-meta">
-                    {/* Schedule chip */}
-                    <span className={`chip schedule ${scheduleChipClass}`}>
-                        {relativeLabel(item.week, presentWeek)}
-                    </span>
+                        <div className="task-meta">
+                            {/* Schedule chip - only shown if prop is true (e.g., in archive) */}
+                            {showScheduleChip && (
+                                <span className={`chip schedule ${scheduleChipClass}`}>
+                                    {relativeLabel(item.week, presentWeek)}
+                                </span>
+                            )}
 
-                    {/* Due date chip */}
-                    {hasDueDate && (
-                        <span className={`chip due-date ${!isDueDatePast && !isDueDateSoon ? 'future' : ''}`}>
-                            Due {formatDate(item.dueDateISO!, 'MMM D')}
-                        </span>
-                    )}
+                            {/* Original week indicator - shows if task was rolled over */}
+                            {item.originalWeek && (
+                                <span className="chip rolled-over" title={`Originally scheduled for ${item.originalWeek}`}>
+                                    ↻ {relativeLabel(item.originalWeek, presentWeek)}
+                                </span>
+                            )}
 
-                    {/* Routine chip */}
-                    {routine && (
-                        <span className="chip routine">
-                            {routine.cadence}
-                        </span>
-                    )}
+                            {/* Due date chip */}
+                            {hasDueDate && (
+                                <span className={`chip due-date ${!isDueDatePast && !isDueDateSoon ? 'future' : ''}`}>
+                                    Due {formatDate(item.dueDateISO!, 'MMM D')}
+                                </span>
+                            )}
 
-                    {/* Time progress display */}
-                    {hasTimeProgress && isIncomplete && (
-                        <span className={`chip time-progress ${timeProgress >= 1 ? 'complete' : ''}`}>
-                            {currentMinutes}{goalMinutes > 0 ? `/${goalMinutes}` : ''} min
-                        </span>
-                    )}
+                            {/* Routine chip */}
+                            {routine && (
+                                <span className="chip routine">
+                                    {routine.cadence}
+                                </span>
+                            )}
 
-                    {/* Completed time - only show if there was a goal */}
-                    {isComplete && hasTimeProgress && item.minutes !== undefined && (
-                        <span className="chip time-logged">
-                            {item.minutes} min
-                        </span>
-                    )}
-                </div>
+                            {/* Time progress display */}
+                            {hasTimeProgress && isIncomplete && (
+                                <span className={`chip time-progress ${timeProgress >= 1 ? 'complete' : ''}`}>
+                                    {currentMinutes}{goalMinutes > 0 ? `/${goalMinutes}` : ''} min
+                                </span>
+                            )}
+
+                            {/* Completed time - only show if there was a goal */}
+                            {isComplete && hasTimeProgress && item.minutes !== undefined && (
+                                <span className="chip time-logged">
+                                    {item.minutes} min
+                                </span>
+                            )}
+                        </div>
+                    </>
+                )}
             </div>
 
             {/* Right-side action area */}
             <div className="task-actions">
-                {/* Time increment buttons - show for all items with time tracking */}
-                {hasTimeProgress && (
-                    <div className="time-btns">
+
+
+                {/* Time increment buttons - show for all items with time tracking (not when editing) */}
+                {hasTimeProgress && !isEditing && (
+                    <div className="time-btns" onClick={(e) => e.stopPropagation()}>
                         <button
                             className="time-btn"
                             onClick={() => incrementProgress(item.id, 15)}
@@ -238,7 +387,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                 {isComplete && (
                     <button
                         className="archive-btn"
-                        onClick={() => archiveItem(item.id)}
+                        onClick={(e) => { e.stopPropagation(); archiveItem(item.id); }}
                         aria-label="Archive item"
                     >
                         Archive
@@ -247,7 +396,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
 
                 {/* Multi-occurrence: show multiple boxes */}
                 {isMultiOccurrence && !isComplete && (
-                    <div className="occurrence-boxes">
+                    <div className="occurrence-boxes" onClick={(e) => e.stopPropagation()}>
                         {Array.from({ length: targetCount }).map((_, idx) => {
                             const isBoxCompleted = idx < completedCount;
                             const isNextToComplete = idx === completedCount;
@@ -278,7 +427,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                 {(!isMultiOccurrence || isComplete) && (
                     <button
                         className={`action-indicator ${actionIndicatorType}`}
-                        onClick={handleStatusClick}
+                        onClick={(e) => { e.stopPropagation(); handleStatusClick(); }}
                         disabled={false}
                         aria-label={isComplete ? 'Mark as incomplete' : 'Mark as complete'}
                     >
@@ -294,6 +443,6 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                     </button>
                 )}
             </div>
-        </div>
+        </div >
     );
 };

@@ -1,10 +1,10 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { TaskList } from './components/TaskList';
-import { CompletedList } from './components/CompletedList';
 import { JumpToToday } from './components/JumpToToday';
 import { WeekNav } from './components/WeekNav';
 import { RoutineManager } from './components/RoutineManager';
+import { ArchivePanel } from './components/ArchivePanel';
 import { DevPanel } from './components/DevPanel';
 import { useTaskStore } from './store/store';
 import './index.css';
@@ -28,21 +28,30 @@ const RoutineIcon = () => (
 const TasksPage: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { getPresentWeek } = useTaskStore();
+    const { getPresentWeek, spawnRoutineTasks, rolloverPastItems } = useTaskStore();
     const [showJumpToToday, setShowJumpToToday] = useState(false);
     const [isAboveWeek, setIsAboveWeek] = useState(false);
     const [currentVisibleWeek, setCurrentVisibleWeek] = useState<string | undefined>(undefined);
     const [showRoutineManager, setShowRoutineManager] = useState(false);
+    const [showArchive, setShowArchive] = useState(false);
+
+    // On load: rollover past incomplete items, then spawn routine tasks
+    useEffect(() => {
+        rolloverPastItems();
+        spawnRoutineTasks();
+    }, [rolloverPastItems, spawnRoutineTasks]);
 
     // Handle scroll to week from MonthZoom or WeekNav
     const scrollToWeek = useCallback((weekKey: string) => {
+        const container = document.querySelector('.tasks-main');
         const weekElement = document.querySelector(`[data-week="${weekKey}"]`);
-        if (weekElement) {
+        if (container && weekElement) {
             const headerOffset = 70; // Fixed header height + padding
-            const elementPosition = weekElement.getBoundingClientRect().top;
-            const offsetPosition = elementPosition + window.scrollY - headerOffset;
+            const containerTop = container.getBoundingClientRect().top;
+            const elementTop = weekElement.getBoundingClientRect().top;
+            const offsetPosition = container.scrollTop + (elementTop - containerTop) - headerOffset;
 
-            window.scrollTo({
+            container.scrollTo({
                 top: offsetPosition,
                 behavior: 'smooth'
             });
@@ -57,8 +66,11 @@ const TasksPage: React.FC = () => {
         }
     }, [location.state, navigate, scrollToWeek]);
 
-    // Track visible week as user scrolls
+    // Track visible week as user scrolls within .tasks-main container
     useEffect(() => {
+        const container = document.querySelector('.tasks-main');
+        if (!container) return;
+
         const observer = new IntersectionObserver(
             (entries) => {
                 // Find the most visible week element
@@ -74,11 +86,15 @@ const TasksPage: React.FC = () => {
                     }
                 }
             },
-            { threshold: 0.1, rootMargin: '-100px 0px -50% 0px' }
+            {
+                root: container, // Observe within the scroll container
+                threshold: 0.1,
+                rootMargin: '-100px 0px -50% 0px'
+            }
         );
 
-        // Observe all week sections
-        const weekElements = document.querySelectorAll('[data-week]');
+        // Observe week section elements
+        const weekElements = container.querySelectorAll('.week-section[data-week]');
         weekElements.forEach(el => observer.observe(el));
 
         return () => observer.disconnect();
@@ -96,13 +112,13 @@ const TasksPage: React.FC = () => {
     }, [getPresentWeek, scrollToWeek]);
 
     return (
-        <div className={`tasks-layout ${showRoutineManager ? 'panel-open' : ''}`}>
+        <div className={`tasks-layout ${showRoutineManager || showArchive ? 'panel-open' : ''}`}>
             <header className="app-header">
                 <h1>Tasks</h1>
                 <div className="header-actions">
-                    <Link to="/completed" className="header-btn" aria-label="Archive">
+                    <button className="header-btn" aria-label="Archive" onClick={() => setShowArchive(!showArchive)}>
                         <CheckListIcon />
-                    </Link>
+                    </button>
                     <button className="header-btn" aria-label="Manage routines" onClick={() => setShowRoutineManager(!showRoutineManager)}>
                         <RoutineIcon />
                     </button>
@@ -118,6 +134,7 @@ const TasksPage: React.FC = () => {
             </div>
 
             <RoutineManager isOpen={showRoutineManager} onClose={() => setShowRoutineManager(false)} />
+            <ArchivePanel isOpen={showArchive} onClose={() => setShowArchive(false)} />
         </div>
     );
 };
@@ -129,7 +146,6 @@ const App: React.FC = () => {
                 <Routes>
                     <Route path="/" element={<TasksPage />} />
                     <Route path="/tasks" element={<TasksPage />} />
-                    <Route path="/completed" element={<CompletedList />} />
                 </Routes>
                 <DevPanel />
             </div>

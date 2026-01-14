@@ -192,8 +192,9 @@ const SeasonalWeekPicker: React.FC<{
 };
 
 export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen, onClose }) => {
-    const { getPresentWeek } = useTaskStore();
+    const { getPresentWeek, routines, deleteRoutine, addRoutine, updateRoutine } = useTaskStore();
     const [isEditing, setIsEditing] = useState(false);
+    const [deleteConfirm, setDeleteConfirm] = useState<{ routineId: string; routineName: string } | null>(null);
 
     const defaultRoutine: DraftRoutine = {
         name: '',
@@ -210,28 +211,73 @@ export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen, onClose 
     };
 
     const [draft, setDraft] = useState<DraftRoutine>(defaultRoutine);
-
-    // Mock routines for display
-    const mockRoutines = [
-        { id: '1', name: 'Sort office', cadence: 'biweekly' as Cadence, taskType: 'simple' as TaskType },
-        { id: '2', name: 'Clean bedroom', cadence: 'biweekly' as Cadence, taskType: 'time-tracked' as TaskType },
-        { id: '3', name: 'Water outdoor plants', cadence: 'weekly' as Cadence, taskType: 'multi-occurrence' as TaskType },
-        { id: '4', name: 'Plan Christmas gifts', cadence: 'annually' as Cadence, taskType: 'simple' as TaskType },
-    ];
+    const [editingRoutineId, setEditingRoutineId] = useState<string | null>(null);
 
     const handleNewRoutine = () => {
+        setEditingRoutineId(null);
         setDraft(defaultRoutine);
         setIsEditing(true);
     };
 
-    const handleEditRoutine = (routine: typeof mockRoutines[0]) => {
-        setDraft({ ...defaultRoutine, name: routine.name, cadence: routine.cadence, taskType: routine.taskType });
+    const handleEditRoutine = (routine: typeof routines[0]) => {
+        setEditingRoutineId(routine.id);
+        setDraft({
+            name: routine.title,
+            taskType: routine.taskType || 'simple',
+            targetCount: routine.targetCount || 3,
+            minutesGoal: routine.minutesGoal || 30,
+            cadence: routine.cadence as Cadence || 'weekly',
+            isYearRound: routine.isYearRound ?? true,
+            anchorWeek: routine.anchorWeek || getPresentWeek(),
+            startMonth: routine.startMonth || 5,
+            startWeekInMonth: routine.startWeekInMonth || 1,
+            endMonth: routine.endMonth || 9,
+            endWeekInMonth: routine.endWeekInMonth || 4,
+        });
         setIsEditing(true);
     };
 
+    const handleDeleteClick = (e: React.MouseEvent, routine: typeof routines[0]) => {
+        e.stopPropagation();
+        setDeleteConfirm({ routineId: routine.id, routineName: routine.title });
+    };
+
+    const handleDeleteConfirm = (removeRelatedTasks: boolean) => {
+        if (deleteConfirm) {
+            deleteRoutine(deleteConfirm.routineId, removeRelatedTasks);
+            setDeleteConfirm(null);
+            setIsEditing(false);
+            setEditingRoutineId(null);
+        }
+    };
+
     const handleSave = () => {
-        // UX only - no actual save
+        if (!draft.name.trim()) {
+            return; // Don't save empty routines
+        }
+
+        const routineData = {
+            title: draft.name.trim(),
+            cadence: draft.cadence,
+            taskType: draft.taskType,
+            targetCount: draft.taskType === 'multi-occurrence' ? draft.targetCount : undefined,
+            minutesGoal: draft.taskType === 'time-tracked' ? draft.minutesGoal : undefined,
+            isYearRound: draft.isYearRound,
+            anchorWeek: draft.anchorWeek,
+            startMonth: !draft.isYearRound ? draft.startMonth : undefined,
+            startWeekInMonth: !draft.isYearRound ? draft.startWeekInMonth : undefined,
+            endMonth: !draft.isYearRound ? draft.endMonth : undefined,
+            endWeekInMonth: !draft.isYearRound ? draft.endWeekInMonth : undefined,
+        };
+
+        if (editingRoutineId) {
+            updateRoutine(editingRoutineId, routineData);
+        } else {
+            addRoutine(routineData as Omit<typeof routineData & { id: string }, 'id'>);
+        }
+
         setIsEditing(false);
+        setEditingRoutineId(null);
     };
 
     const handleBack = () => {
@@ -265,18 +311,22 @@ export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen, onClose 
                         </div>
 
                         <div className="routine-list">
-                            {mockRoutines.map(routine => (
-                                <button
-                                    key={routine.id}
-                                    className="routine-list-item"
-                                    onClick={() => handleEditRoutine(routine)}
-                                >
-                                    <span className="routine-name">{routine.name}</span>
-                                    <span className={`routine-badge ${routine.cadence}`}>
-                                        {routine.cadence}
-                                    </span>
-                                </button>
-                            ))}
+                            {routines.length === 0 ? (
+                                <div className="routine-list-empty">No routines yet</div>
+                            ) : (
+                                routines.map(routine => (
+                                    <button
+                                        key={routine.id}
+                                        className="routine-list-item"
+                                        onClick={() => handleEditRoutine(routine)}
+                                    >
+                                        <span className="routine-name">{routine.title}</span>
+                                        <span className={`routine-badge ${routine.cadence}`}>
+                                            {routine.cadence}
+                                        </span>
+                                    </button>
+                                ))
+                            )}
                         </div>
 
                         <button className="add-routine-btn" onClick={handleNewRoutine}>
@@ -286,6 +336,27 @@ export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen, onClose 
                 ) : (
                     // Routine Editor View
                     <>
+                        {/* Delete Confirmation Dialog */}
+                        {deleteConfirm && (
+                            <div className="delete-confirm-dialog">
+                                <div className="delete-confirm-content">
+                                    <h3>Delete "{deleteConfirm.routineName}"</h3>
+                                    <p className="delete-confirm-subtitle">Would you also like to remove upcoming non-started tasks?</p>
+                                    <div className="delete-confirm-actions">
+                                        <button className="btn-delete-keep" onClick={() => handleDeleteConfirm(false)}>
+                                            Keep Tasks
+                                        </button>
+                                        <button className="btn-delete-remove" onClick={() => handleDeleteConfirm(true)}>
+                                            Remove Tasks
+                                        </button>
+                                    </div>
+                                    <button className="btn-cancel-link" onClick={() => setDeleteConfirm(null)}>
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="routine-panel-header">
                             <button className="back-btn" onClick={handleBack}>← Back</button>
                             <button className="save-btn" onClick={handleSave}>Save</button>
@@ -429,16 +500,31 @@ export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen, onClose 
                                 </div>
                             )}
 
-                            {/* Annual: specific week picker */}
+                            {/* Annual: specific week picker - uses CalendarWeekPicker like other cadences */}
                             {draft.cadence === 'annually' && (
                                 <div className="editor-section">
-                                    <SeasonalWeekPicker
+                                    <CalendarWeekPicker
                                         label="Occurs in"
-                                        month={draft.startMonth}
-                                        weekInMonth={draft.startWeekInMonth}
-                                        onMonthChange={m => updateDraft({ startMonth: m })}
-                                        onWeekChange={w => updateDraft({ startWeekInMonth: w })}
+                                        weekKey={draft.anchorWeek}
+                                        onWeekChange={w => updateDraft({ anchorWeek: w })}
                                     />
+                                </div>
+                            )}
+
+                            {/* Delete button - only show when editing existing routine */}
+                            {editingRoutineId && (
+                                <div className="editor-section delete-section">
+                                    <button
+                                        className="delete-routine-btn"
+                                        onClick={() => {
+                                            const routine = routines.find(r => r.id === editingRoutineId);
+                                            if (routine) {
+                                                setDeleteConfirm({ routineId: routine.id, routineName: routine.title });
+                                            }
+                                        }}
+                                    >
+                                        Delete Routine
+                                    </button>
                                 </div>
                             )}
                         </div>

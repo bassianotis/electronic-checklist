@@ -14,6 +14,7 @@ import {
     verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { TaskCard } from './TaskCard';
+import { InlineTaskEditor } from './InlineTaskEditor';
 import { useTaskStore } from '../store/store';
 import type { WeekKey } from '../types';
 import { compareWeekKeys, addWeeks, getFirstDayOfWeek } from '../utils/timeUtils';
@@ -67,6 +68,10 @@ export const TaskList: React.FC<TaskListProps> = ({ onPresentWeekVisible }) => {
     const [announcement, setAnnouncement] = useState('');
     const presentWeekRef = useRef<HTMLDivElement>(null);
     const observerRef = useRef<IntersectionObserver | null>(null);
+
+    // Inline editor state: { week, orderIndex } or null
+    const [editingAt, setEditingAt] = useState<{ week: WeekKey; orderIndex: number } | null>(null);
+    const [hoveringAt, setHoveringAt] = useState<{ week: WeekKey; orderIndex: number } | null>(null);
 
     const visibleItems = getVisibleItems();
     const presentWeek = getPresentWeek();
@@ -203,15 +208,52 @@ export const TaskList: React.FC<TaskListProps> = ({ onPresentWeekVisible }) => {
                                     </div>
                                 )}
                                 <div className="week-date-label">{weekDateLabel}</div>
-                                {weekItems.map((item) => (
-                                    <TaskCard
-                                        key={item.id}
-                                        item={item}
-                                        routine={item.routineId ? routineMap.get(item.routineId) : undefined}
-                                        presentWeek={presentWeek}
-                                        currentTime={currentTime}
-                                    />
+                                {weekItems.map((item, index) => (
+                                    <React.Fragment key={item.id}>
+                                        {/* Insertion point before each item */}
+                                        {editingAt?.week === week && editingAt?.orderIndex === item.orderIndex ? (
+                                            <InlineTaskEditor
+                                                week={week}
+                                                orderIndex={item.orderIndex}
+                                                onComplete={() => setEditingAt(null)}
+                                                onCancel={() => setEditingAt(null)}
+                                            />
+                                        ) : (
+                                            <div
+                                                className={`insertion-point ${hoveringAt?.week === week && hoveringAt?.orderIndex === item.orderIndex ? 'visible' : ''}`}
+                                                onMouseEnter={() => setHoveringAt({ week, orderIndex: item.orderIndex })}
+                                                onMouseLeave={() => setHoveringAt(null)}
+                                                onClick={() => setEditingAt({ week, orderIndex: item.orderIndex })}
+                                            >
+                                                <span className="insertion-plus">+</span>
+                                            </div>
+                                        )}
+                                        <TaskCard
+                                            item={item}
+                                            routine={item.routineId ? routineMap.get(item.routineId) : undefined}
+                                            presentWeek={presentWeek}
+                                            currentTime={currentTime}
+                                        />
+                                    </React.Fragment>
                                 ))}
+                                {/* Insertion point at end of week */}
+                                {editingAt?.week === week && editingAt?.orderIndex === weekItems.length ? (
+                                    <InlineTaskEditor
+                                        week={week}
+                                        orderIndex={weekItems.length}
+                                        onComplete={() => setEditingAt(null)}
+                                        onCancel={() => setEditingAt(null)}
+                                    />
+                                ) : (
+                                    <div
+                                        className={`insertion-point ${hoveringAt?.week === week && hoveringAt?.orderIndex === weekItems.length ? 'visible' : ''}`}
+                                        onMouseEnter={() => setHoveringAt({ week, orderIndex: weekItems.length })}
+                                        onMouseLeave={() => setHoveringAt(null)}
+                                        onClick={() => setEditingAt({ week, orderIndex: weekItems.length })}
+                                    >
+                                        <span className="insertion-plus">+</span>
+                                    </div>
+                                )}
                             </div>
                         );
                     })}

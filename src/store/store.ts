@@ -6,6 +6,12 @@ import {
     getWeekKey,
     compareWeekKeys
 } from '../utils/timeUtils';
+import {
+    getVisibleWeeks,
+    spawnTasksForRoutine,
+    updateRoutineTasks,
+    removeOutdatedRoutineTasks
+} from '../utils/routineSpawner';
 import dayjs from 'dayjs';
 
 interface TaskStore {
@@ -23,8 +29,15 @@ interface TaskStore {
     decrementOccurrence: (id: string) => void; // For undoing multi-occurrence
     reorderItem: (id: string, newOrderIndex: number, newWeek?: WeekKey) => void;
     moveToWeek: (id: string, week: WeekKey) => void;
+    addItem: (title: string, week: WeekKey, orderIndex: number, options?: { minutesGoal?: number; targetCount?: number; dueDateISO?: string }) => string;
+    updateItem: (id: string, updates: { title?: string; minutesGoal?: number; targetCount?: number; dueDateISO?: string }) => void;
     archiveItem: (id: string) => void;
     unarchiveItem: (id: string) => void;
+    deleteRoutine: (id: string, removeRelatedTasks: boolean) => void;
+    addRoutine: (routine: Omit<Routine, 'id'>) => string;
+    updateRoutine: (id: string, updates: Partial<Routine>) => void;
+    spawnRoutineTasks: () => void;
+    rolloverPastItems: () => void; // Move incomplete past items to present week
     executeRollover: () => void;
     advanceTime: (days: number) => void;
     setTime: (isoTime: string) => void;
@@ -110,13 +123,26 @@ export const useTaskStore = create<TaskStore>()(
             },
 
             incrementProgress: (id: string, minutes: number) => {
-                // Simply add minutes, don't auto-move or auto-uncomplete
+                const { currentTime } = get();
                 set((state) => ({
-                    items: state.items.map((item) =>
-                        item.id === id
-                            ? { ...item, minutes: (item.minutes ?? 0) + minutes }
-                            : item
-                    ),
+                    items: state.items.map((item) => {
+                        if (item.id !== id) return item;
+
+                        const newMinutes = (item.minutes ?? 0) + minutes;
+                        const goal = item.minutesGoal ?? 0;
+
+                        // Auto-complete if goal is met
+                        if (goal > 0 && newMinutes >= goal && item.status === 'incomplete') {
+                            return {
+                                ...item,
+                                minutes: newMinutes,
+                                status: 'complete' as const,
+                                completedAt: currentTime,
+                            };
+                        }
+
+                        return { ...item, minutes: newMinutes };
+                    }),
                 }));
             },
 
@@ -217,6 +243,190 @@ export const useTaskStore = create<TaskStore>()(
                                 : i
                         ),
                     };
+                });
+            },
+
+            addItem: (title: string, week: WeekKey, orderIndex: number, options?: { minutesGoal?: number; targetCount?: number; dueDateISO?: string }) => {
+                const id = `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+                set((state) => {
+                    // Shift items at or after orderIndex down
+                    const updatedItems = state.items.map((item) => {
+                        if (item.week === week && !item.archived && item.orderIndex >= orderIndex) {
+                            return { ...item, orderIndex: item.orderIndex + 1 };
+                        }
+                        return item;
+                    });
+
+                    const newItem: Item = {
+                        id,
+                        title,
+                        week,
+                        status: 'incomplete',
+                        orderIndex,
+                        ...(options?.minutesGoal && { minutesGoal: options.minutesGoal, minutes: 0 }),
+                        ...(options?.targetCount && options.targetCount > 1 && { targetCount: options.targetCount, completedCount: 0 }),
+                        ...(options?.dueDateISO && { hasDueDate: true, dueDateISO: options.dueDateISO }),
+                    };
+
+                    return { items: [...updatedItems, newItem] };
+                });
+
+                return id;
+            },
+
+            updateItem: (id: string, updates: { title?: string; minutesGoal?: number; targetCount?: number; dueDateISO?: string; notes?: string }) => {
+                set((state) => ({
+                    items: state.items.map((item) => {
+                        if (item.id !== id) return item;
+
+                        const updated = { ...item };
+
+                        if (updates.title !== undefined) {
+                            updated.title = updates.title;
+                        }
+                        if (updates.minutesGoal !== undefined) {
+                            updated.minutesGoal = updates.minutesGoal;
+                            if (updates.minutesGoal > 0 && updated.minutes === undefined) {
+                                updated.minutes = 0;
+                            }
+                        }
+                        if (updates.targetCount !== undefined) {
+                            updated.targetCount = updates.targetCount > 1 ? updates.targetCount : undefined;
+                            if (updates.targetCount > 1 && updated.completedCount === undefined) {
+                                updated.completedCount = 0;
+                            }
+                        }
+                        if (updates.dueDateISO !== undefined) {
+                            updated.dueDateISO = updates.dueDateISO || undefined;
+                            updated.hasDueDate = !!updates.dueDateISO;
+                        }
+                        if (updates.notes !== undefined) {
+                            // Enforce 140 char limit and trim empty to undefined
+                            updated.notes = updates.notes.slice(0, 140) || undefined;
+                        }
+
+                        return updated;
+                    }),
+                }));
+            },
+
+            deleteRoutine: (id: string, removeRelatedTasks: boolean) => {
+                set((state) => {
+                    const routine = state.routines.find(r => r.id === id);
+                    if (!routine) return state;
+
+                    let filteredItems = state.items;
+
+                    if (removeRelatedTasks) {
+                        // Remove non-started items that are linked to this routine
+                        // A task is "started" if it has any progress (minutes > 0, completedCount > 0, or status !== 'incomplete')
+                        filteredItems = state.items.filter(item => {
+                            if (item.routineId !== id) return true;
+
+                            // Check if the item has been started
+                            const hasProgress = (item.minutes && item.minutes > 0) ||
+                                (item.completedCount && item.completedCount > 0) ||
+                                item.status !== 'incomplete';
+
+                            // Keep if it has progress
+                            return hasProgress;
+                        });
+                    }
+
+                    return {
+                        routines: state.routines.filter(r => r.id !== id),
+                        items: filteredItems,
+                    };
+                });
+            },
+
+            addRoutine: (routineData: Omit<Routine, 'id'>) => {
+                const id = `routine-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                const routine: Routine = { ...routineData, id };
+
+                set((state) => {
+                    // Add routine
+                    const newRoutines = [...state.routines, routine];
+
+                    // Spawn tasks for this routine immediately
+                    const visibleWeeks = getVisibleWeeks(state.currentTime);
+                    const newTasks = spawnTasksForRoutine(routine, visibleWeeks, state.items);
+
+                    return {
+                        routines: newRoutines,
+                        items: [...state.items, ...newTasks],
+                    };
+                });
+
+                return id;
+            },
+
+            updateRoutine: (id: string, updates: Partial<Routine>) => {
+                set((state) => {
+                    const routineIndex = state.routines.findIndex(r => r.id === id);
+                    if (routineIndex === -1) return state;
+
+                    const updatedRoutine = { ...state.routines[routineIndex], ...updates };
+                    const newRoutines = [...state.routines];
+                    newRoutines[routineIndex] = updatedRoutine;
+
+                    // Remove tasks that no longer match the schedule (handles cadence changes to less frequent)
+                    const itemsAfterRemoval = removeOutdatedRoutineTasks(updatedRoutine, state.items);
+
+                    // Update remaining non-started tasks with new values
+                    const updatedItems = updateRoutineTasks(updatedRoutine, itemsAfterRemoval);
+
+                    // Spawn any new tasks (in case schedule expanded)
+                    const visibleWeeks = getVisibleWeeks(state.currentTime);
+                    const newTasks = spawnTasksForRoutine(updatedRoutine, visibleWeeks, updatedItems);
+
+                    return {
+                        routines: newRoutines,
+                        items: [...updatedItems, ...newTasks],
+                    };
+                });
+            },
+
+            spawnRoutineTasks: () => {
+                set((state) => {
+                    const visibleWeeks = getVisibleWeeks(state.currentTime);
+                    let allItems = [...state.items];
+
+                    for (const routine of state.routines) {
+                        const newTasks = spawnTasksForRoutine(routine, visibleWeeks, allItems);
+                        allItems = [...allItems, ...newTasks];
+                    }
+
+                    return { items: allItems };
+                });
+            },
+
+            rolloverPastItems: () => {
+                set((state) => {
+                    const presentWeek = getWeekKey(state.currentTime);
+
+                    const updatedItems = state.items.map(item => {
+                        // Skip if already in present/future week
+                        if (compareWeekKeys(item.week, presentWeek) >= 0) {
+                            return item;
+                        }
+
+                        // Skip if complete or archived
+                        if (item.status === 'complete' || item.archived) {
+                            return item;
+                        }
+
+                        // Move incomplete past item to present week
+                        return {
+                            ...item,
+                            week: presentWeek,
+                            // Track original week (only if not already set - preserves earliest origin)
+                            originalWeek: item.originalWeek || item.week,
+                        };
+                    });
+
+                    return { items: updatedItems };
                 });
             },
 
