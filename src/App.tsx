@@ -6,24 +6,12 @@ import { WeekNav } from './components/WeekNav';
 import { RoutineManager } from './components/RoutineManager';
 import { ArchivePanel } from './components/ArchivePanel';
 import { DevPanel } from './components/DevPanel';
+import { SideDrawer } from './components/SideDrawer';
 import { useTaskStore } from './store/store';
+import { ThemeProvider } from './context/ThemeContext';
 import './index.css';
 
-const CheckListIcon = () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
-        <path d="M9 11l3 3L22 4" />
-        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-    </svg>
-);
 
-const RoutineIcon = () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
-        <path d="M17 1l4 4-4 4" />
-        <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-        <path d="M7 23l-4-4 4-4" />
-        <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-    </svg>
-);
 
 const TasksPage: React.FC = () => {
     const navigate = useNavigate();
@@ -41,12 +29,14 @@ const TasksPage: React.FC = () => {
         spawnRoutineTasks();
     }, [rolloverPastItems, spawnRoutineTasks]);
 
+
+
     // Handle scroll to week from MonthZoom or WeekNav
     const scrollToWeek = useCallback((weekKey: string) => {
         const container = document.querySelector('.tasks-main');
         const weekElement = document.querySelector(`[data-week="${weekKey}"]`);
         if (container && weekElement) {
-            const headerOffset = 70; // Fixed header height + padding
+            const headerOffset = 10; // No header, minimal offset
             const containerTop = container.getBoundingClientRect().top;
             const elementTop = weekElement.getBoundingClientRect().top;
             const offsetPosition = container.scrollTop + (elementTop - containerTop) - headerOffset;
@@ -111,19 +101,20 @@ const TasksPage: React.FC = () => {
         scrollToWeek(getPresentWeek());
     }, [getPresentWeek, scrollToWeek]);
 
+    const handleToolkitToggle = (panel: 'archive' | 'routines') => {
+        if (panel === 'archive') {
+            setShowArchive(!showArchive);
+            setShowRoutineManager(false);
+        } else {
+            setShowRoutineManager(!showRoutineManager);
+            setShowArchive(false);
+        }
+    };
+
+    const activePanel = showArchive ? 'archive' : showRoutineManager ? 'routines' : null;
+
     return (
-        <div className={`tasks-layout ${showRoutineManager || showArchive ? 'panel-open' : ''}`}>
-            <header className="app-header">
-                <h1>Tasks</h1>
-                <div className="header-actions">
-                    <button className="header-btn" aria-label="Archive" onClick={() => setShowArchive(!showArchive)}>
-                        <CheckListIcon />
-                    </button>
-                    <button className="header-btn" aria-label="Manage routines" onClick={() => setShowRoutineManager(!showRoutineManager)}>
-                        <RoutineIcon />
-                    </button>
-                </div>
-            </header>
+        <div className={`tasks-layout theme-default ${activePanel ? 'panel-open' : ''}`}>
 
             <div className="tasks-main">
                 <WeekNav onNavigate={scrollToWeek} currentVisibleWeek={currentVisibleWeek} />
@@ -133,23 +124,39 @@ const TasksPage: React.FC = () => {
                 <JumpToToday visible={showJumpToToday} onClick={handleJumpToToday} isAbove={isAboveWeek} />
             </div>
 
-            <RoutineManager isOpen={showRoutineManager} onClose={() => setShowRoutineManager(false)} />
-            <ArchivePanel isOpen={showArchive} onClose={() => setShowArchive(false)} />
+            <SideDrawer
+                isOpen={activePanel !== null}
+                activePanel={activePanel}
+                onToggle={handleToolkitToggle}
+                onClose={() => {
+                    setShowRoutineManager(false);
+                    setShowArchive(false);
+                }}
+            >
+                {activePanel === 'routines' && (
+                    <RoutineManager isOpen={true} onClose={() => { }} />
+                )}
+                {activePanel === 'archive' && (
+                    <ArchivePanel isOpen={true} onClose={() => { }} />
+                )}
+            </SideDrawer>
         </div>
     );
 };
 
 const App: React.FC = () => {
     return (
-        <BrowserRouter>
-            <div className="app">
-                <Routes>
-                    <Route path="/" element={<TasksPage />} />
-                    <Route path="/tasks" element={<TasksPage />} />
-                </Routes>
-                <DevPanel />
-            </div>
-        </BrowserRouter>
+        <ThemeProvider>
+            <BrowserRouter>
+                <div className="app">
+                    <Routes>
+                        <Route path="/" element={<TasksPage />} />
+                        <Route path="/tasks" element={<TasksPage />} />
+                    </Routes>
+                    <DevPanel />
+                </div>
+            </BrowserRouter>
+        </ThemeProvider>
     );
 };
 

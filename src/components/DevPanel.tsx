@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useTaskStore } from '../store/store';
 import { formatDate } from '../utils/timeUtils';
+import { useTheme } from '../context/ThemeContext';
 
 export const DevPanel: React.FC = () => {
     const [isOpen, setIsOpen] = useState(false);
@@ -15,6 +16,7 @@ export const DevPanel: React.FC = () => {
     } = useTaskStore();
 
     const presentWeek = getPresentWeek();
+    const { theme, setTheme } = useTheme();
 
     const handleAdvance = (days: number) => advanceTime(days);
     const handleRollover = () => executeRollover();
@@ -79,6 +81,27 @@ export const DevPanel: React.FC = () => {
                         />
                         Allow uncomplete (within 7 days)
                     </label>
+                </div>
+
+                <div className="dev-section">
+                    <label>Theme</label>
+                    <div className="dev-btns">
+                        <select
+                            value={theme}
+                            onChange={(e) => setTheme(e.target.value as 'default' | 'scrapbook')}
+                            style={{
+                                padding: '4px 8px',
+                                background: 'var(--bg-secondary)',
+                                border: '1px solid var(--border-medium)',
+                                borderRadius: 'var(--radius-sm)',
+                                color: 'var(--text-primary)',
+                                fontSize: '0.75rem',
+                            }}
+                        >
+                            <option value="default">Default (Clean)</option>
+                            <option value="scrapbook">Scrapbook</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div className="dev-section">

@@ -16,6 +16,8 @@ interface TaskCardProps {
     presentWeek: WeekKey;
     currentTime: string;
     showScheduleChip?: boolean; // Show "This week"/"Next week" etc. chip (default: false)
+    isOverlay?: boolean; // Rendered in DragOverlay
+    isSpacer?: boolean; // Rendered as an invisible spacer to hold layout
 }
 
 // Icons
@@ -36,44 +38,14 @@ const CheckIcon = () => (
     </svg>
 );
 
-// Clock-style progress circle component (yellow outline with yellow fill sweeping clockwise)
-interface ClockProgressProps {
-    progress: number; // 0 to 1
-    size: number;
-}
-
-const ClockProgress: React.FC<ClockProgressProps> = ({ progress, size }) => {
-    // Create a conic gradient that fills clockwise from the top (12 o'clock)
-    const degrees = progress * 360;
-
-    return (
-        <div
-            className="clock-progress-container"
-            style={{ width: size, height: size }}
-        >
-            {/* Yellow fill that sweeps clockwise */}
-            <div
-                className="clock-progress-fill"
-                style={{
-                    background: `conic-gradient(
-                        from 0deg,
-                        var(--wk-present) 0deg,
-                        var(--wk-present) ${degrees}deg,
-                        transparent ${degrees}deg,
-                        transparent 360deg
-                    )`
-                }}
-            />
-        </div>
-    );
-};
-
 export const TaskCard: React.FC<TaskCardProps> = ({
     item,
     routine,
     presentWeek,
     currentTime,
     showScheduleChip = false,
+    isOverlay = false,
+    isSpacer = false,
 }) => {
     const { completeItem, uncompleteItem, incrementProgress, incrementOccurrence, decrementOccurrence, archiveItem, updateItem } = useTaskStore();
     const [isEditing, setIsEditing] = useState(false);
@@ -105,13 +77,15 @@ export const TaskCard: React.FC<TaskCardProps> = ({
         transition,
         isDragging,
     } = useSortable({
-        id: item.id,
-        disabled: !canDrag,
+        id: isSpacer && item?.id ? `spacer-${item.id}` : item?.id ?? 'spacer',
+        disabled: !canDrag || isOverlay || isSpacer, // Disable sortable logic if in overlay or spacer
     });
 
-    const style = {
-        transform: CSS.Transform.toString(transform),
+    const style: React.CSSProperties = {
+        transform: isOverlay ? undefined : CSS.Transform.toString(transform),
         transition,
+        opacity: isDragging || isSpacer ? 0 : 1, // Hide if dragging OR if it's a spacer
+        pointerEvents: isSpacer ? 'none' : undefined, // Spacer shouldn't be interactive
     };
 
     // Determine chip tint class for schedule
@@ -232,6 +206,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
             }}
             style={style}
             className={`task-card ${isComplete ? 'completed' : ''} ${isDragging ? 'dragging' : ''} ${isEditing ? 'editing' : ''}`}
+            data-is-spacer={isSpacer ? 'true' : undefined}
             data-item-id={item.id}
             data-week={item.week}
             onClick={handleCardClick}

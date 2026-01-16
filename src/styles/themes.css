@@ -1,0 +1,1148 @@
+/* ====================================================================
+   THEME DEFINITIONS
+   Switch themes via: document.documentElement.dataset.theme = 'themeName'
+   ==================================================================== */
+
+/* ====================================================================
+   DEFAULT THEME - Clean, Modern, Minimal
+   A sleek, refined aesthetic with subtle depth and smooth interactions
+   ==================================================================== */
+:root,
+[data-theme="default"] {
+    /* Week tints - Modern amber & indigo */
+    --wk-present: #F59E0B;
+    --wk-present-bg: rgba(245, 158, 11, 0.08);
+    --wk-present-text: #92400E;
+    --wk-future: #6366F1;
+    --wk-future-bg: rgba(99, 102, 241, 0.08);
+    --wk-future-text: #4338CA;
+    --wk-past: #94A3B8;
+    --wk-past-bg: rgba(148, 163, 184, 0.08);
+
+    /* Status colors - Refined palette */
+    --status-complete: #10B981;
+    --status-complete-bg: rgba(16, 185, 129, 0.1);
+    --status-pending: #F59E0B;
+    --status-overdue: #EF4444;
+    --status-overdue-bg: rgba(239, 68, 68, 0.08);
+
+    /* Text colors - Refined hierarchy */
+    --text-primary: #0F172A;
+
+    /* Primary Brand Colors */
+    --primary-color: #6366F1;
+    /* Indigo */
+    --primary-light: #E0E7FF;
+    /* Indigo-100 */
+    --text-secondary: #475569;
+    --text-muted: #94A3B8;
+    --text-inverse: #FFFFFF;
+
+    /* Background colors - Subtle warmth */
+    --bg-primary: #FFFFFF;
+    --bg-secondary: #F8FAFC;
+    --bg-tertiary: #F1F5F9;
+    --bg-hover: #E2E8F0;
+    --bg-overlay: rgba(15, 23, 42, 0.5);
+
+    /* Border colors */
+    --border-light: #E2E8F0;
+    --border-medium: #CBD5E1;
+    --border-focus: #6366F1;
+
+    /* Shadows - Refined for depth */
+    --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+    --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+    --shadow-md: 0 4px 6px rgba(15, 23, 42, 0.05), 0 2px 4px rgba(15, 23, 42, 0.04);
+    --shadow-lg: 0 10px 15px rgba(15, 23, 42, 0.08), 0 4px 6px rgba(15, 23, 42, 0.04);
+    --shadow-paper: 0 1px 3px rgba(15, 23, 42, 0.08);
+
+    /* Border radius - Modern rounded */
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 20px;
+    --radius-full: 9999px;
+
+    /* Font families */
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-typewriter: var(--font-sans);
+    --font-handwritten: var(--font-sans);
+
+    /* Transitions */
+    --transition-fast: 0.15s ease;
+    --transition-normal: 0.2s ease;
+    --transition-slow: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Theme-specific fallbacks (scrapbook compatibility) */
+    --torn-edge-1: none;
+    --torn-edge-2: none;
+    --kraft-dark: var(--border-medium);
+    --kraft-medium: var(--border-light);
+    --kraft-light: var(--bg-tertiary);
+    --kraft-cream: var(--bg-secondary);
+    --kraft-white: var(--bg-primary);
+    --ink-black: var(--text-primary);
+    --ink-brown: var(--text-secondary);
+    --ink-faded: var(--text-muted);
+    --ink-light: #94A3B8;
+    --stamp-red: #EF4444;
+    --stamp-red-light: rgba(239, 68, 68, 0.1);
+    --marker-green: #10B981;
+    --marker-green-light: rgba(16, 185, 129, 0.1);
+    --highlighter-yellow: #F59E0B;
+    --highlighter-yellow-light: rgba(245, 158, 11, 0.15);
+    --washi-blue: #6366F1;
+    --washi-blue-light: rgba(99, 102, 241, 0.1);
+}
+
+/* ============ BODY & FOUNDATION ============ */
+[data-theme="default"] body {
+    background-color: var(--bg-secondary);
+    background-image: none;
+    line-height: 1.6;
+    letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ============ HEADER ============ */
+[data-theme="default"] .app-header {
+    /* Glassmorphism effect */
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    background-image: none;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+    box-shadow: none;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    justify-content: center;
+    /* Center the title */
+}
+
+/* Shadow on scroll */
+[data-theme="default"] .app-header.scrolled {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+    border-bottom-color: rgba(226, 232, 240, 0.8);
+}
+
+/* Better typography */
+[data-theme="default"] .app-header h1 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    text-transform: none;
+    color: var(--text-primary);
+}
+
+/* ============ SIDE DRAWER ============ */
+.side-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 320px;
+    height: 100vh;
+    z-index: 100;
+    background: var(--bg-primary);
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
+    transform: translateX(100%);
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    border-left: 1px solid var(--border-light);
+}
+
+.side-drawer.open {
+    transform: translateX(0);
+}
+
+.drawer-tabs {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    transform: translate(-100%, -50%);
+    /* Start at left edge of drawer */
+    z-index: 101;
+    display: flex;
+    flex-direction: column;
+}
+
+.toolkit-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    /* Tighter gap for tabs */
+    background: var(--bg-tertiary);
+    /* Shaded "tab bar" */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 12px 8px;
+    border-radius: 16px 0 0 16px;
+    /* Left rounded only */
+    box-shadow: -4px 2px 12px rgba(0, 0, 0, 0.08);
+    /* Shadow on left */
+    border: 1px solid var(--border-light);
+    border-right: none;
+    /* Seamless join with drawer */
+}
+
+/* Ensure drawer content takes full height */
+.drawer-content {
+    height: 100%;
+    overflow-y: auto;
+    background: var(--bg-primary);
+}
+
+.drawer-backdrop {
+    display: none;
+    /* Safely hide override */
+}
+
+/* Layout shift matching drawer animation */
+.tasks-layout.panel-open .tasks-main {
+    padding-right: 340px !important;
+    /* Force override of index.css */
+    transition: padding-right 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Reset old toolkit styles */
+.side-toolkit {
+    position: static;
+    transform: none !important;
+    padding: 0;
+}
+
+.toolkit-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    /* Slightly squarer for tab feel */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+    cursor: pointer;
+    position: relative;
+}
+
+.toolkit-btn:hover {
+    background: rgba(255, 255, 255, 0.5);
+    color: var(--text-primary);
+}
+
+.toolkit-btn.active {
+    background: var(--bg-primary);
+    /* White to match content */
+    color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    transform: scale(1.02);
+    border-color: var(--border-light);
+}
+
+/* Pointer indicator for active state */
+
+/* Tooltip on hover */
+.toolkit-btn::after {
+    content: attr(title);
+    position: absolute;
+    right: 120%;
+    /* Push further left */
+    top: 50%;
+    transform: translateY(-50%) translateX(-5px);
+    background: var(--text-primary);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.toolkit-btn:hover::after {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+}
+
+/* Polished buttons */
+[data-theme="default"] .header-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    box-shadow: none;
+    color: var(--text-muted);
+    padding: 8px 12px;
+    gap: 6px;
+    transition: all 0.15s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+[data-theme="default"] .header-btn svg {
+    transition: color 0.15s ease;
+}
+
+[data-theme="default"] .header-btn:hover {
+    background: var(--bg-tertiary);
+    border-color: var(--border-light);
+    color: var(--text-primary);
+    transform: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="default"] .header-btn:active {
+    transform: scale(0.96);
+}
+
+[data-theme="default"] .header-btn:focus-visible {
+    outline: 2px solid var(--border-focus);
+    outline-offset: 2px;
+}
+
+/* ============ TASK CARDS ============ */
+[data-theme="default"] .task-card {
+    background: var(--bg-primary);
+    background-image: none;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-light);
+    margin-bottom: 8px;
+    padding: 14px 18px;
+    box-shadow: var(--shadow-sm);
+    clip-path: none;
+    clip-path: none;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+[data-theme="default"] .task-card::before,
+[data-theme="default"] .task-card::after {
+    display: none;
+}
+
+[data-theme="default"] .task-card:hover:not(.dragging) {
+    border-color: var(--border-medium);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+}
+
+[data-theme="default"] .task-card:focus-within {
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+[data-theme="default"] .task-card.dragging {
+    box-shadow: var(--shadow-lg);
+    border-color: var(--border-medium);
+    transform: none;
+    /* No rotation or scaling */
+    z-index: 999;
+    /* Ensure it stays on top */
+}
+
+[data-theme="default"] .task-card.completed {
+    background: var(--bg-secondary);
+    border-color: var(--border-light);
+    transition: opacity 0.4s ease 0.3s;
+}
+
+[data-theme="default"] .task-card.completed:hover {
+    opacity: 1 !important;
+    transition: opacity 0s;
+    /* Instant when hovering */
+}
+
+[data-theme="default"] .task-card.completed:not(:hover) {
+    opacity: 0.85;
+}
+
+/* ============ TASK TITLE ============ */
+[data-theme="default"] .task-title {
+    background: none;
+    padding: 0;
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    line-height: 1.4;
+}
+
+[data-theme="default"] .task-card.completed .task-title {
+    text-decoration: line-through;
+    text-decoration-color: var(--text-muted);
+    text-decoration-thickness: 1.5px;
+    color: var(--text-muted);
+    font-style: normal;
+}
+
+/* ============ CHIPS / TAGS ============ */
+[data-theme="default"] .chip {
+    border-radius: var(--radius-sm);
+    transform: none;
+    box-shadow: none;
+    border-left: none;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    padding: 3px 8px;
+    transition: all var(--transition-fast);
+}
+
+[data-theme="default"] .chip.schedule {
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+}
+
+[data-theme="default"] .chip.schedule.present {
+    background: var(--wk-present-bg);
+    color: var(--wk-present-text);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+[data-theme="default"] .chip.schedule.future {
+    background: var(--wk-future-bg);
+    color: var(--wk-future-text);
+    border: 1px solid rgba(99, 102, 241, 0.15);
+}
+
+[data-theme="default"] .chip.due-date {
+    background: var(--status-overdue-bg);
+    color: var(--status-overdue);
+    border: 1px solid rgba(239, 68, 68, 0.15);
+}
+
+[data-theme="default"] .chip.routine {
+    background: rgba(139, 92, 246, 0.08);
+    color: #7C3AED;
+    border: 1px solid rgba(139, 92, 246, 0.15);
+}
+
+[data-theme="default"] .chip.rolled-over {
+    background: rgba(245, 158, 11, 0.08);
+    color: #B45309;
+    border: 1px solid rgba(245, 158, 11, 0.15);
+}
+
+/* ============ ACTION INDICATORS (Checkboxes) ============ */
+[data-theme="default"] .action-indicator {
+    transition: all var(--transition-fast);
+}
+
+[data-theme="default"] .action-indicator.complete {
+    background: var(--status-complete);
+    color: white;
+    border: none;
+    transform: none;
+    box-shadow: 0 1px 2px rgba(16, 185, 129, 0.3);
+}
+
+[data-theme="default"] .action-indicator.complete:hover {
+    transform: scale(1.05);
+}
+
+[data-theme="default"] .action-indicator.complete::before {
+    display: none;
+}
+
+[data-theme="default"] .action-indicator.complete svg {
+    display: block;
+    width: 14px;
+    height: 14px;
+}
+
+[data-theme="default"] .action-indicator.due-empty {
+    border: 2px solid var(--border-medium);
+    background: var(--bg-primary);
+    box-shadow: none;
+}
+
+[data-theme="default"] .action-indicator.due-empty:hover {
+    border-color: var(--status-complete);
+    background: var(--status-complete-bg);
+}
+
+[data-theme="default"] .action-indicator.future {
+    border: 2px solid var(--border-light);
+    background: var(--bg-secondary);
+    box-shadow: none;
+    opacity: 0.6;
+}
+
+[data-theme="default"] .action-indicator.future:hover {
+    opacity: 1;
+    border-color: var(--wk-future);
+    background: var(--wk-future-bg);
+}
+
+/* ============ WEEK SECTIONS ============ */
+[data-theme="default"] .week-section {
+    transition: background var(--transition-normal);
+}
+
+[data-theme="default"] .week-section[data-is-present="true"] {
+    border-left: 3px solid var(--wk-present);
+    background: linear-gradient(90deg, var(--wk-present-bg) 0%, transparent 100%);
+    padding-left: 12px;
+    margin-left: -12px;
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+/* Week header row - for inline header + date */
+[data-theme="default"] .week-header-row {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 8px;
+}
+
+[data-theme="default"] .week-date-label {
+    display: inline;
+    background: transparent;
+    border-left: none;
+    transform: none;
+    box-shadow: none;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    opacity: 1;
+    padding: 0;
+    margin: 0 0 0 10px;
+    border-radius: 0;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    line-height: 1;
+}
+
+/* Standalone week date (no header above) */
+[data-theme="default"] .week-date-label.standalone {
+    margin-left: 0;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-size: 0.6875rem;
+    letter-spacing: 0.06em;
+}
+
+/* ============ SECTION HEADERS ============ */
+/* Base section header (shared) */
+[data-theme="default"] .section-header {
+    transform: none;
+    box-shadow: none;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    display: inline-flex;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+[data-theme="default"] .section-header::before {
+    display: none;
+}
+
+/* Relative headers (This Week, Next Week) - HIGHEST priority */
+[data-theme="default"] .section-header.relative-header {
+    font-size: 0.875rem;
+    /* Slightly larger */
+    font-weight: 800;
+    /* Extra bold */
+    background: transparent;
+    padding: 0;
+    margin: 0;
+    border-radius: 0;
+    border: none;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    /* transition: color 0.2s ease; */
+}
+
+[data-theme="default"] .section-header.relative-header.header-present {
+    color: var(--wk-present);
+}
+
+[data-theme="default"] .section-header.relative-header.header-future {
+    color: var(--wk-future);
+}
+
+[data-theme="default"] .section-header.relative-header.header-past {
+    color: var(--wk-past);
+}
+
+/* Month headers (FEBRUARY 1) - Parent grouping style */
+[data-theme="default"] .section-header.month-header {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: transparent;
+    padding: 12px 0 4px 0;
+    border-radius: 0;
+    margin-top: 16px;
+    margin-bottom: 8px;
+}
+
+[data-theme="default"] .section-header::after {
+    display: none;
+}
+
+/* ============ JUMP TO TODAY BUTTON ============ */
+[data-theme="default"] .jump-to-today {
+    background: var(--wk-present);
+    color: var(--text-primary);
+    border-radius: var(--radius-full);
+    border: none;
+    transform: none;
+    letter-spacing: 0;
+    font-weight: 600;
+    font-size: 0.75rem;
+    padding: 8px 16px;
+    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+    transition: all var(--transition-fast);
+}
+
+[data-theme="default"] .jump-to-today::before {
+    display: none;
+}
+
+[data-theme="default"] .jump-to-today:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+}
+
+[data-theme="default"] .jump-to-today:active {
+    transform: translateY(0);
+}
+
+/* ============ SCROLLBAR (Webkit) ============ */
+[data-theme="default"] ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+[data-theme="default"] ::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+[data-theme="default"] ::-webkit-scrollbar-thumb {
+    background: var(--border-medium);
+    border-radius: var(--radius-full);
+}
+
+[data-theme="default"] ::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* ============ DRAG HANDLES ============ */
+[data-theme="default"] .drag-handle {
+    opacity: 0.35;
+    transition: opacity var(--transition-fast);
+}
+
+[data-theme="default"] .task-card:hover .drag-handle {
+    opacity: 0.6;
+}
+
+[data-theme="default"] .drag-handle:hover {
+    opacity: 0.85;
+}
+
+/* ============ TIME BUTTONS (+15/+30) ============ */
+[data-theme="default"] .time-btn {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid transparent;
+    font-weight: 600;
+}
+
+[data-theme="default"] .time-btn:hover {
+    background: var(--wk-present-bg);
+    color: var(--wk-present-text);
+    border-color: rgba(245, 158, 11, 0.25);
+}
+
+/* ============ ARCHIVE BUTTON ============ */
+[data-theme="default"] .archive-btn {
+    opacity: 0.6;
+    transition: all var(--transition-fast);
+}
+
+[data-theme="default"] .archive-btn:hover {
+    opacity: 1;
+    background: var(--status-overdue-bg);
+    color: var(--status-overdue);
+}
+
+/* ============ CHIP HOVER EFFECTS ============ */
+[data-theme="default"] .chip:hover {
+    filter: brightness(0.95);
+}
+
+/* ============ CHECKBOX COMPLETE ANIMATION ============ */
+@keyframes checkPop {
+    0% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.15);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+[data-theme="default"] .action-indicator.complete {
+    animation: checkPop 0.2s ease-out;
+}
+
+/* ============ CARD FOCUS INNER GLOW ============ */
+[data-theme="default"] .task-card:focus-within {
+    border-color: var(--border-light);
+    box-shadow:
+        var(--shadow-sm),
+        inset 0 0 0 2px rgba(99, 102, 241, 0.08);
+}
+
+/* ============ HEADER LAYOUT ============ */
+[data-theme="default"] .app-header {
+    padding-left: 20px;
+    padding-right: 20px;
+}
+
+/* ============ CONTENT MAX-WIDTH ============ */
+[data-theme="default"] .task-list {
+    max-width: 720px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* ============ TASK META SPACING ============ */
+[data-theme="default"] .task-meta {
+    margin-top: 6px;
+    gap: 6px;
+}
+
+/* ============ SECTION HEADER DATE ALIGNMENT ============ */
+[data-theme="default"] .week-date-label {
+    margin-left: 8px;
+}
+
+/* ============ PRESENT WEEK GRADIENT SMOOTHING ============ */
+[data-theme="default"] .week-section[data-is-present="true"] {
+    background: linear-gradient(90deg,
+            var(--wk-present-bg) 0%,
+            rgba(245, 158, 11, 0.04) 40%,
+            transparent 80%);
+}
+
+/* ====================================================================
+   SCRAPBOOK THEME - Craft Paper, Washi Tape, Analog Feel
+   ==================================================================== */
+[data-theme="scrapbook"] {
+    /* Craft paper palette */
+    --kraft-dark: #8B7355;
+    --kraft-medium: #B8A088;
+    --kraft-light: #D4C4A8;
+    --kraft-cream: #F5EDE0;
+    --kraft-white: #FAF7F2;
+
+    /* Ink colors */
+    --ink-black: #2C2416;
+    --ink-brown: #5D4E37;
+    --ink-faded: #8B7B68;
+    --ink-light: #A89B8B;
+
+    /* Status colors - analog feel */
+    --stamp-red: #C23B22;
+    --stamp-red-light: rgba(194, 59, 34, 0.15);
+    --marker-green: #3D7A4A;
+    --marker-green-light: rgba(61, 122, 74, 0.2);
+    --highlighter-yellow: #F4D35E;
+    --highlighter-yellow-light: rgba(244, 211, 94, 0.4);
+    --washi-blue: #6B8CAE;
+    --washi-blue-light: rgba(107, 140, 174, 0.25);
+
+    /* Week tints - mapped to analog elements */
+    --wk-present: var(--highlighter-yellow);
+    --wk-present-bg: var(--highlighter-yellow-light);
+    --wk-future: var(--washi-blue);
+    --wk-future-bg: var(--washi-blue-light);
+    --wk-past: var(--ink-light);
+    --wk-past-bg: rgba(168, 155, 139, 0.15);
+
+    /* Status colors */
+    --status-complete: var(--marker-green);
+    --status-pending: var(--highlighter-yellow);
+    --status-overdue: var(--stamp-red);
+
+    /* Text colors */
+    --text-primary: var(--ink-black);
+    --text-secondary: var(--ink-brown);
+    --text-muted: var(--ink-faded);
+    --text-inverse: var(--kraft-cream);
+
+    /* Background colors */
+    --bg-primary: var(--kraft-white);
+    --bg-secondary: var(--kraft-cream);
+    --bg-tertiary: var(--kraft-light);
+    --bg-overlay: rgba(44, 36, 22, 0.6);
+
+    /* Border colors */
+    --border-light: var(--kraft-medium);
+    --border-medium: var(--kraft-dark);
+
+    /* Paper shadows - more diffuse, like real paper */
+    --shadow-sm: 2px 2px 4px rgba(44, 36, 22, 0.08);
+    --shadow-md: 3px 4px 8px rgba(44, 36, 22, 0.12), -1px -1px 2px rgba(255, 255, 255, 0.5);
+    --shadow-lg: 5px 6px 16px rgba(44, 36, 22, 0.15), -2px -2px 4px rgba(255, 255, 255, 0.4);
+    --shadow-paper: 2px 3px 6px rgba(44, 36, 22, 0.18), 0 0 1px rgba(44, 36, 22, 0.1);
+
+    /* Border radius - more organic, imperfect */
+    --radius-sm: 2px;
+    --radius-md: 4px;
+    --radius-lg: 6px;
+
+    /* Font families */
+    --font-typewriter: 'Special Elite', 'Courier Prime', 'Courier New', monospace;
+    --font-handwritten: 'Special Elite', cursive;
+    --font-sans: var(--font-typewriter);
+
+    /* Torn edge clip paths */
+    --torn-edge-1: polygon(0% 2%, 3% 0%, 8% 3%, 15% 1%, 22% 2%, 30% 0%, 38% 2%, 45% 1%, 52% 3%, 60% 0%, 68% 2%, 75% 1%, 82% 3%, 90% 0%, 95% 2%, 100% 1%, 100% 97%, 97% 100%, 92% 98%, 85% 100%, 78% 98%, 70% 100%, 62% 97%, 55% 100%, 48% 98%, 40% 100%, 32% 98%, 25% 100%, 18% 97%, 10% 100%, 5% 98%, 0% 100%);
+    --torn-edge-2: polygon(0% 1%, 5% 3%, 12% 0%, 20% 2%, 28% 1%, 35% 3%, 42% 0%, 50% 2%, 58% 1%, 65% 3%, 72% 0%, 80% 2%, 88% 1%, 94% 3%, 100% 0%, 100% 98%, 95% 100%, 88% 97%, 80% 100%, 72% 98%, 65% 100%, 58% 97%, 50% 100%, 42% 98%, 35% 100%, 28% 97%, 20% 100%, 12% 98%, 5% 100%, 0% 97%);
+}
+
+/* Scrapbook body styles */
+[data-theme="scrapbook"] body {
+    line-height: 1.6;
+    letter-spacing: 0.02em;
+    background-color: var(--kraft-cream);
+    background-image:
+        url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E"),
+        linear-gradient(180deg, var(--kraft-cream) 0%, var(--kraft-light) 100%);
+    background-blend-mode: soft-light, normal;
+}
+
+/* Scrapbook header */
+[data-theme="scrapbook"] .app-header {
+    background: var(--kraft-light);
+    background-image:
+        url("data:image/svg+xml,%3Csvg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='paper'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.04' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23paper)' opacity='0.05'/%3E%3C/svg%3E");
+    border-bottom: 3px solid var(--kraft-dark);
+    box-shadow: 0 3px 8px rgba(44, 36, 22, 0.15);
+}
+
+[data-theme="scrapbook"] .app-header h1 {
+    font-size: 1.5rem;
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-black);
+}
+
+[data-theme="scrapbook"] .header-btn {
+    background: var(--kraft-cream);
+    border: 2px solid var(--kraft-dark);
+    border-radius: 0;
+    color: var(--ink-brown);
+    box-shadow: 2px 2px 0 var(--kraft-dark);
+}
+
+[data-theme="scrapbook"] .header-btn:hover {
+    background: var(--kraft-white);
+    color: var(--ink-black);
+    transform: translate(-1px, -1px);
+    box-shadow: 3px 3px 0 var(--kraft-dark);
+}
+
+/* Scrapbook task card */
+[data-theme="scrapbook"] .task-card {
+    background: var(--kraft-white);
+    background-image:
+        url("data:image/svg+xml,%3Csvg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='paper'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.04' numOctaves='5'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23paper)' opacity='0.04'/%3E%3C/svg%3E"),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0%, transparent 20%, transparent 80%, rgba(0, 0, 0, 0.03) 100%);
+    border: none;
+    border-radius: 0;
+    padding: var(--spacing-md) var(--spacing-lg);
+    margin-bottom: 16px;
+    box-shadow:
+        0 1px 1px rgba(44, 36, 22, 0.15),
+        0 4px 8px rgba(44, 36, 22, 0.12),
+        0 8px 16px rgba(44, 36, 22, 0.08),
+        0 16px 32px rgba(44, 36, 22, 0.05),
+        inset 0 1px 0 rgba(255, 255, 255, 0.6),
+        inset 0 -2px 4px rgba(44, 36, 22, 0.04);
+    clip-path: var(--torn-edge-1);
+}
+
+/* Paper edge indicator */
+[data-theme="scrapbook"] .task-card::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 5%;
+    right: 5%;
+    height: 3px;
+    background: linear-gradient(90deg,
+            transparent 0%,
+            rgba(139, 115, 85, 0.3) 10%,
+            rgba(139, 115, 85, 0.4) 50%,
+            rgba(139, 115, 85, 0.3) 90%,
+            transparent 100%);
+    filter: blur(1px);
+    pointer-events: none;
+}
+
+/* Varied rotations */
+[data-theme="scrapbook"] .task-card:nth-child(3n+1) {
+    transform: rotate(-0.4deg) translateZ(0);
+}
+
+[data-theme="scrapbook"] .task-card:nth-child(3n+2) {
+    transform: rotate(0.5deg) translateZ(0);
+    clip-path: var(--torn-edge-2);
+}
+
+[data-theme="scrapbook"] .task-card:nth-child(3n) {
+    transform: rotate(-0.25deg) translateZ(0);
+}
+
+[data-theme="scrapbook"] .task-card:nth-child(5n) {
+    transform: rotate(0.6deg) translateZ(0);
+}
+
+/* Tape decoration */
+[data-theme="scrapbook"] .task-card::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: 20px;
+    width: 45px;
+    height: 16px;
+    background: linear-gradient(180deg, rgba(244, 211, 94, 0.75) 0%, rgba(244, 211, 94, 0.55) 100%);
+    transform: rotate(-2deg);
+    box-shadow: 0 2px 3px rgba(0, 0, 0, 0.12);
+    opacity: 0.9;
+    z-index: 1;
+}
+
+[data-theme="scrapbook"] .task-card:nth-child(2n)::before {
+    left: auto;
+    right: 30px;
+    transform: rotate(3deg);
+    background: linear-gradient(180deg, rgba(107, 140, 174, 0.6) 0%, rgba(107, 140, 174, 0.4) 100%);
+}
+
+[data-theme="scrapbook"] .task-card:nth-child(4n)::before {
+    display: none;
+}
+
+[data-theme="scrapbook"] .task-card:hover {
+    box-shadow:
+        0 2px 2px rgba(44, 36, 22, 0.12),
+        0 6px 12px rgba(44, 36, 22, 0.15),
+        0 12px 24px rgba(44, 36, 22, 0.10),
+        inset 0 1px 0 rgba(255, 255, 255, 0.7),
+        inset 0 -2px 4px rgba(44, 36, 22, 0.03);
+    transform: rotate(0deg) translateY(-1px);
+    z-index: 10;
+}
+
+[data-theme="scrapbook"] .task-card.dragging {
+    box-shadow:
+        0 4px 4px rgba(44, 36, 22, 0.15),
+        0 12px 24px rgba(44, 36, 22, 0.2),
+        0 24px 48px rgba(44, 36, 22, 0.15),
+        inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    transform: rotate(2deg) scale(1.03) translateY(-8px);
+}
+
+[data-theme="scrapbook"] .task-card.completed {
+    opacity: 0.85;
+    background: var(--kraft-cream);
+}
+
+/* Scrapbook task title with highlighter effect */
+[data-theme="scrapbook"] .task-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--ink-black);
+    display: inline;
+    background: linear-gradient(to top,
+            rgba(244, 211, 94, 0.45) 0%,
+            rgba(244, 211, 94, 0.45) 35%,
+            transparent 35%);
+    padding: 0 2px;
+    margin-left: -2px;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+
+[data-theme="scrapbook"] .task-card.completed .task-title {
+    text-decoration: line-through;
+    text-decoration-color: var(--stamp-red);
+    text-decoration-thickness: 2px;
+    color: var(--ink-faded);
+    font-style: italic;
+    background: none;
+}
+
+/* Scrapbook chips - washi tape style */
+[data-theme="scrapbook"] .chip {
+    border-radius: 0;
+    transform: rotate(-1deg);
+    box-shadow: 1px 1px 2px rgba(44, 36, 22, 0.1);
+}
+
+[data-theme="scrapbook"] .chip:nth-child(2n) {
+    transform: rotate(0.5deg);
+}
+
+[data-theme="scrapbook"] .chip:nth-child(3n) {
+    transform: rotate(-0.8deg);
+}
+
+[data-theme="scrapbook"] .chip.schedule {
+    background: var(--kraft-light);
+    color: var(--ink-brown);
+    border-left: 3px solid var(--kraft-dark);
+}
+
+[data-theme="scrapbook"] .chip.schedule.present {
+    background: var(--highlighter-yellow);
+    color: var(--ink-brown);
+    border-left: 3px solid #C9A227;
+}
+
+[data-theme="scrapbook"] .chip.schedule.future {
+    background: var(--washi-blue);
+    color: var(--kraft-white);
+    border-left: 3px solid #4A6B8A;
+}
+
+[data-theme="scrapbook"] .chip.due-date {
+    background: var(--stamp-red-light);
+    color: var(--stamp-red);
+    border-left: 3px solid var(--stamp-red);
+}
+
+[data-theme="scrapbook"] .chip.routine {
+    background: rgba(139, 92, 180, 0.2);
+    color: #5D3A8E;
+    border-left: 3px solid #8B5CB4;
+}
+
+[data-theme="scrapbook"] .chip.rolled-over {
+    background: rgba(194, 130, 59, 0.2);
+    color: #8B5A2B;
+    border-left: 3px solid #C2823B;
+}
+
+/* Scrapbook action indicators */
+[data-theme="scrapbook"] .action-indicator.complete {
+    background: transparent;
+    color: var(--marker-green);
+    border: 3px solid var(--marker-green);
+    transform: rotate(-8deg);
+    box-shadow:
+        inset 0 0 0 1px var(--marker-green),
+        1px 1px 0 rgba(61, 122, 74, 0.3);
+}
+
+[data-theme="scrapbook"] .action-indicator.complete::before {
+    content: '✓';
+    font-size: 18px;
+    font-weight: 900;
+    color: var(--marker-green);
+}
+
+[data-theme="scrapbook"] .action-indicator.complete svg {
+    display: none;
+}
+
+[data-theme="scrapbook"] .action-indicator.complete:hover:not(:disabled) {
+    background: var(--marker-green-light);
+    transform: rotate(-5deg) scale(1.05);
+}
+
+[data-theme="scrapbook"] .action-indicator.future {
+    background: var(--washi-blue);
+    border: 2px solid #4A6B8A;
+    box-shadow: 1px 2px 3px rgba(44, 36, 22, 0.15);
+}
+
+[data-theme="scrapbook"] .action-indicator.due-empty {
+    border: 3px dashed var(--highlighter-yellow);
+    box-shadow: inset 0 0 8px rgba(244, 211, 94, 0.3);
+}
+
+[data-theme="scrapbook"] .action-indicator.due-empty:hover {
+    background: var(--highlighter-yellow-light);
+    border-style: solid;
+}
+
+/* Scrapbook week section */
+[data-theme="scrapbook"] .week-section {
+    padding-top: var(--spacing-lg);
+}
+
+[data-theme="scrapbook"] .week-section[data-is-present="true"] {
+    border-left: 6px solid var(--highlighter-yellow);
+    padding-left: var(--spacing-md);
+    margin-left: calc(-1 * var(--spacing-md));
+    background: linear-gradient(90deg, rgba(244, 211, 94, 0.1) 0%, transparent 50%);
+}
+
+[data-theme="scrapbook"] .week-date-label {
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: var(--ink-brown);
+    padding: 4px var(--spacing-md);
+    display: inline-block;
+    background: var(--kraft-light);
+    border-left: 4px solid var(--kraft-dark);
+    transform: rotate(-0.5deg);
+    box-shadow: 1px 2px 3px rgba(44, 36, 22, 0.1);
+}
+
+[data-theme="scrapbook"] .section-header {
+    background: var(--kraft-medium);
+    transform: rotate(-0.3deg);
+    box-shadow: 2px 3px 4px rgba(44, 36, 22, 0.15);
+    font-size: 1rem;
+    letter-spacing: 0.15em;
+}
+
+[data-theme="scrapbook"] .section-header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: -8px;
+    border-left: 8px solid var(--kraft-medium);
+    border-top: 50% solid transparent;
+    border-bottom: 50% solid transparent;
+}
+
+/* Scrapbook jump to today */
+[data-theme="scrapbook"] .jump-to-today {
+    background: var(--highlighter-yellow);
+    color: var(--ink-black);
+    border-radius: 0;
+    transform: rotate(-2deg);
+    border: 2px solid #C9A227;
+    letter-spacing: 0.05em;
+}
+
+[data-theme="scrapbook"] .jump-to-today::before {
+    content: '📌';
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 16px;
+}
+
+[data-theme="scrapbook"] .jump-to-today:hover {
+    transform: rotate(0deg) scale(1.05);
+}

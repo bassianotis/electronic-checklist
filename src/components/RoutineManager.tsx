@@ -289,248 +289,234 @@ export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen, onClose 
     };
 
     return (
-        <>
-            {/* Overlay */}
-            <div
-                className={`routine-manager-overlay ${isOpen ? 'open' : ''}`}
-                onClick={onClose}
-            />
+        <div className="routine-manager-content">
+            {!isEditing ? (
+                // Routine List View
+                <>
+                    <div className="routine-panel-header">
+                        <h2>Routines</h2>
+                    </div>
 
-            {/* Panel */}
-            <div className={`routine-manager-panel ${isOpen ? 'open' : ''}`}>
-                {!isEditing ? (
-                    // Routine List View
-                    <>
-                        <div className="routine-panel-header">
-                            <h2>Routines</h2>
-                            <button className="panel-close-btn" onClick={onClose} aria-label="Close panel">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <polyline points="9 18 15 12 9 6" />
-                                </svg>
-                            </button>
-                        </div>
+                    <div className="routine-list">
+                        {routines.length === 0 ? (
+                            <div className="routine-list-empty">No routines yet</div>
+                        ) : (
+                            routines.map(routine => (
+                                <button
+                                    key={routine.id}
+                                    className="routine-list-item"
+                                    onClick={() => handleEditRoutine(routine)}
+                                >
+                                    <span className="routine-name">{routine.title}</span>
+                                    <span className={`routine-badge ${routine.cadence}`}>
+                                        {routine.cadence}
+                                    </span>
+                                </button>
+                            ))
+                        )}
+                    </div>
 
-                        <div className="routine-list">
-                            {routines.length === 0 ? (
-                                <div className="routine-list-empty">No routines yet</div>
-                            ) : (
-                                routines.map(routine => (
-                                    <button
-                                        key={routine.id}
-                                        className="routine-list-item"
-                                        onClick={() => handleEditRoutine(routine)}
-                                    >
-                                        <span className="routine-name">{routine.title}</span>
-                                        <span className={`routine-badge ${routine.cadence}`}>
-                                            {routine.cadence}
-                                        </span>
+                    <button className="add-routine-btn" onClick={handleNewRoutine}>
+                        + New Routine
+                    </button>
+                </>
+            ) : (
+                // Routine Editor View
+                <>
+                    {/* Delete Confirmation Dialog */}
+                    {deleteConfirm && (
+                        <div className="delete-confirm-dialog">
+                            <div className="delete-confirm-content">
+                                <h3>Delete "{deleteConfirm.routineName}"</h3>
+                                <p className="delete-confirm-subtitle">Would you also like to remove upcoming non-started tasks?</p>
+                                <div className="delete-confirm-actions">
+                                    <button className="btn-delete-keep" onClick={() => handleDeleteConfirm(false)}>
+                                        Keep Tasks
                                     </button>
-                                ))
-                            )}
+                                    <button className="btn-delete-remove" onClick={() => handleDeleteConfirm(true)}>
+                                        Remove Tasks
+                                    </button>
+                                </div>
+                                <button className="btn-cancel-link" onClick={() => setDeleteConfirm(null)}>
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="routine-panel-header">
+                        <button className="back-btn" onClick={handleBack}>← Back</button>
+                        <button className="save-btn" onClick={handleSave}>Save</button>
+                    </div>
+
+                    <div className="routine-editor">
+                        {/* Task Type Selection (First) */}
+                        <div className="editor-section">
+                            <label className="editor-label">Task Type</label>
+                            <div className="task-type-options">
+                                <button
+                                    className={`task-type-btn ${draft.taskType === 'simple' ? 'active' : ''}`}
+                                    onClick={() => updateDraft({ taskType: 'simple' })}
+                                >
+                                    <span className="task-type-icon">☐</span>
+                                    <span className="task-type-name">Simple</span>
+                                    <span className="task-type-desc">One checkbox</span>
+                                </button>
+                                <button
+                                    className={`task-type-btn ${draft.taskType === 'multi-occurrence' ? 'active' : ''}`}
+                                    onClick={() => updateDraft({ taskType: 'multi-occurrence' })}
+                                >
+                                    <span className="task-type-icon">☐☐☐</span>
+                                    <span className="task-type-name">Multi</span>
+                                    <span className="task-type-desc">Multiple times</span>
+                                </button>
+                                <button
+                                    className={`task-type-btn ${draft.taskType === 'time-tracked' ? 'active' : ''}`}
+                                    onClick={() => updateDraft({ taskType: 'time-tracked' })}
+                                >
+                                    <span className="task-type-icon">◔</span>
+                                    <span className="task-type-name">Timed</span>
+                                    <span className="task-type-desc">Track minutes</span>
+                                </button>
+                            </div>
                         </div>
 
-                        <button className="add-routine-btn" onClick={handleNewRoutine}>
-                            + New Routine
-                        </button>
-                    </>
-                ) : (
-                    // Routine Editor View
-                    <>
-                        {/* Delete Confirmation Dialog */}
-                        {deleteConfirm && (
-                            <div className="delete-confirm-dialog">
-                                <div className="delete-confirm-content">
-                                    <h3>Delete "{deleteConfirm.routineName}"</h3>
-                                    <p className="delete-confirm-subtitle">Would you also like to remove upcoming non-started tasks?</p>
-                                    <div className="delete-confirm-actions">
-                                        <button className="btn-delete-keep" onClick={() => handleDeleteConfirm(false)}>
-                                            Keep Tasks
-                                        </button>
-                                        <button className="btn-delete-remove" onClick={() => handleDeleteConfirm(true)}>
-                                            Remove Tasks
-                                        </button>
-                                    </div>
-                                    <button className="btn-cancel-link" onClick={() => setDeleteConfirm(null)}>
-                                        Cancel
+                        {/* Multi-occurrence count */}
+                        {draft.taskType === 'multi-occurrence' && (
+                            <div className="editor-section">
+                                <label className="editor-label">Times per week</label>
+                                <div className="count-stepper">
+                                    <button onClick={() => updateDraft({ targetCount: Math.max(2, draft.targetCount - 1) })}>−</button>
+                                    <span>{draft.targetCount}</span>
+                                    <button onClick={() => updateDraft({ targetCount: draft.targetCount + 1 })}>+</button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Time goal */}
+                        {draft.taskType === 'time-tracked' && (
+                            <div className="editor-section">
+                                <label className="editor-label">Minutes goal</label>
+                                <div className="count-stepper">
+                                    <button onClick={() => updateDraft({ minutesGoal: Math.max(15, draft.minutesGoal - 15) })}>−</button>
+                                    <span>{draft.minutesGoal} min</span>
+                                    <button onClick={() => updateDraft({ minutesGoal: draft.minutesGoal + 15 })}>+</button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Name */}
+                        <div className="editor-section">
+                            <label className="editor-label">Name</label>
+                            <input
+                                type="text"
+                                className="editor-input"
+                                value={draft.name}
+                                onChange={e => updateDraft({ name: e.target.value })}
+                                placeholder="e.g., Clean kitchen"
+                            />
+                        </div>
+
+                        {/* Cadence */}
+                        <div className="editor-section">
+                            <label className="editor-label">Frequency</label>
+                            <div className="cadence-options">
+                                {(['weekly', 'biweekly', 'monthly', 'annually'] as Cadence[]).map(c => (
+                                    <button
+                                        key={c}
+                                        className={`cadence-btn ${draft.cadence === c ? 'active' : ''}`}
+                                        onClick={() => updateDraft({ cadence: c })}
+                                    >
+                                        {c === 'biweekly' ? 'Every other week' : c}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Year-round / Seasonal selector (not for annual tasks) */}
+                        {draft.cadence !== 'annually' && (
+                            <div className="editor-section">
+                                <label className="editor-label">Timeframe</label>
+                                <div className="timeframe-options">
+                                    <button
+                                        className={`timeframe-btn ${draft.isYearRound ? 'active' : ''}`}
+                                        onClick={() => updateDraft({ isYearRound: true })}
+                                    >
+                                        Year-round
+                                    </button>
+                                    <button
+                                        className={`timeframe-btn ${!draft.isYearRound ? 'active' : ''}`}
+                                        onClick={() => updateDraft({ isYearRound: false })}
+                                    >
+                                        Seasonal
                                     </button>
                                 </div>
                             </div>
                         )}
 
-                        <div className="routine-panel-header">
-                            <button className="back-btn" onClick={handleBack}>← Back</button>
-                            <button className="save-btn" onClick={handleSave}>Save</button>
-                        </div>
-
-                        <div className="routine-editor">
-                            {/* Task Type Selection (First) */}
+                        {/* Start week for year-round routines (specific calendar week) */}
+                        {draft.isYearRound && draft.cadence !== 'annually' && (
                             <div className="editor-section">
-                                <label className="editor-label">Task Type</label>
-                                <div className="task-type-options">
-                                    <button
-                                        className={`task-type-btn ${draft.taskType === 'simple' ? 'active' : ''}`}
-                                        onClick={() => updateDraft({ taskType: 'simple' })}
-                                    >
-                                        <span className="task-type-icon">☐</span>
-                                        <span className="task-type-name">Simple</span>
-                                        <span className="task-type-desc">One checkbox</span>
-                                    </button>
-                                    <button
-                                        className={`task-type-btn ${draft.taskType === 'multi-occurrence' ? 'active' : ''}`}
-                                        onClick={() => updateDraft({ taskType: 'multi-occurrence' })}
-                                    >
-                                        <span className="task-type-icon">☐☐☐</span>
-                                        <span className="task-type-name">Multi</span>
-                                        <span className="task-type-desc">Multiple times</span>
-                                    </button>
-                                    <button
-                                        className={`task-type-btn ${draft.taskType === 'time-tracked' ? 'active' : ''}`}
-                                        onClick={() => updateDraft({ taskType: 'time-tracked' })}
-                                    >
-                                        <span className="task-type-icon">◔</span>
-                                        <span className="task-type-name">Timed</span>
-                                        <span className="task-type-desc">Track minutes</span>
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Multi-occurrence count */}
-                            {draft.taskType === 'multi-occurrence' && (
-                                <div className="editor-section">
-                                    <label className="editor-label">Times per week</label>
-                                    <div className="count-stepper">
-                                        <button onClick={() => updateDraft({ targetCount: Math.max(2, draft.targetCount - 1) })}>−</button>
-                                        <span>{draft.targetCount}</span>
-                                        <button onClick={() => updateDraft({ targetCount: draft.targetCount + 1 })}>+</button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Time goal */}
-                            {draft.taskType === 'time-tracked' && (
-                                <div className="editor-section">
-                                    <label className="editor-label">Minutes goal</label>
-                                    <div className="count-stepper">
-                                        <button onClick={() => updateDraft({ minutesGoal: Math.max(15, draft.minutesGoal - 15) })}>−</button>
-                                        <span>{draft.minutesGoal} min</span>
-                                        <button onClick={() => updateDraft({ minutesGoal: draft.minutesGoal + 15 })}>+</button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Name */}
-                            <div className="editor-section">
-                                <label className="editor-label">Name</label>
-                                <input
-                                    type="text"
-                                    className="editor-input"
-                                    value={draft.name}
-                                    onChange={e => updateDraft({ name: e.target.value })}
-                                    placeholder="e.g., Clean kitchen"
+                                <CalendarWeekPicker
+                                    label="Start week"
+                                    weekKey={draft.anchorWeek}
+                                    onWeekChange={w => updateDraft({ anchorWeek: w })}
                                 />
                             </div>
+                        )}
 
-                            {/* Cadence */}
+                        {/* Season pickers for non-year-round routines */}
+                        {!draft.isYearRound && draft.cadence !== 'annually' && (
                             <div className="editor-section">
-                                <label className="editor-label">Frequency</label>
-                                <div className="cadence-options">
-                                    {(['weekly', 'biweekly', 'monthly', 'annually'] as Cadence[]).map(c => (
-                                        <button
-                                            key={c}
-                                            className={`cadence-btn ${draft.cadence === c ? 'active' : ''}`}
-                                            onClick={() => updateDraft({ cadence: c })}
-                                        >
-                                            {c === 'biweekly' ? 'Every other week' : c}
-                                        </button>
-                                    ))}
+                                <div className="week-picker-row">
+                                    <SeasonalWeekPicker
+                                        label="Start"
+                                        month={draft.startMonth}
+                                        weekInMonth={draft.startWeekInMonth}
+                                        onMonthChange={m => updateDraft({ startMonth: m })}
+                                        onWeekChange={w => updateDraft({ startWeekInMonth: w })}
+                                    />
+                                    <SeasonalWeekPicker
+                                        label="End"
+                                        month={draft.endMonth}
+                                        weekInMonth={draft.endWeekInMonth}
+                                        onMonthChange={m => updateDraft({ endMonth: m })}
+                                        onWeekChange={w => updateDraft({ endWeekInMonth: w })}
+                                    />
                                 </div>
                             </div>
+                        )}
 
-                            {/* Year-round / Seasonal selector (not for annual tasks) */}
-                            {draft.cadence !== 'annually' && (
-                                <div className="editor-section">
-                                    <label className="editor-label">Timeframe</label>
-                                    <div className="timeframe-options">
-                                        <button
-                                            className={`timeframe-btn ${draft.isYearRound ? 'active' : ''}`}
-                                            onClick={() => updateDraft({ isYearRound: true })}
-                                        >
-                                            Year-round
-                                        </button>
-                                        <button
-                                            className={`timeframe-btn ${!draft.isYearRound ? 'active' : ''}`}
-                                            onClick={() => updateDraft({ isYearRound: false })}
-                                        >
-                                            Seasonal
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
+                        {/* Annual: specific week picker - uses CalendarWeekPicker like other cadences */}
+                        {draft.cadence === 'annually' && (
+                            <div className="editor-section">
+                                <CalendarWeekPicker
+                                    label="Occurs in"
+                                    weekKey={draft.anchorWeek}
+                                    onWeekChange={w => updateDraft({ anchorWeek: w })}
+                                />
+                            </div>
+                        )}
 
-                            {/* Start week for year-round routines (specific calendar week) */}
-                            {draft.isYearRound && draft.cadence !== 'annually' && (
-                                <div className="editor-section">
-                                    <CalendarWeekPicker
-                                        label="Start week"
-                                        weekKey={draft.anchorWeek}
-                                        onWeekChange={w => updateDraft({ anchorWeek: w })}
-                                    />
-                                </div>
-                            )}
-
-                            {/* Season pickers for non-year-round routines */}
-                            {!draft.isYearRound && draft.cadence !== 'annually' && (
-                                <div className="editor-section">
-                                    <div className="week-picker-row">
-                                        <SeasonalWeekPicker
-                                            label="Start"
-                                            month={draft.startMonth}
-                                            weekInMonth={draft.startWeekInMonth}
-                                            onMonthChange={m => updateDraft({ startMonth: m })}
-                                            onWeekChange={w => updateDraft({ startWeekInMonth: w })}
-                                        />
-                                        <SeasonalWeekPicker
-                                            label="End"
-                                            month={draft.endMonth}
-                                            weekInMonth={draft.endWeekInMonth}
-                                            onMonthChange={m => updateDraft({ endMonth: m })}
-                                            onWeekChange={w => updateDraft({ endWeekInMonth: w })}
-                                        />
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Annual: specific week picker - uses CalendarWeekPicker like other cadences */}
-                            {draft.cadence === 'annually' && (
-                                <div className="editor-section">
-                                    <CalendarWeekPicker
-                                        label="Occurs in"
-                                        weekKey={draft.anchorWeek}
-                                        onWeekChange={w => updateDraft({ anchorWeek: w })}
-                                    />
-                                </div>
-                            )}
-
-                            {/* Delete button - only show when editing existing routine */}
-                            {editingRoutineId && (
-                                <div className="editor-section delete-section">
-                                    <button
-                                        className="delete-routine-btn"
-                                        onClick={() => {
-                                            const routine = routines.find(r => r.id === editingRoutineId);
-                                            if (routine) {
-                                                setDeleteConfirm({ routineId: routine.id, routineName: routine.title });
-                                            }
-                                        }}
-                                    >
-                                        Delete Routine
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    </>
-                )}
-            </div>
-        </>
+                        {/* Delete button - only show when editing existing routine */}
+                        {editingRoutineId && (
+                            <div className="editor-section delete-section">
+                                <button
+                                    className="delete-routine-btn"
+                                    onClick={() => {
+                                        const routine = routines.find(r => r.id === editingRoutineId);
+                                        if (routine) {
+                                            setDeleteConfirm({ routineId: routine.id, routineName: routine.title });
+                                        }
+                                    }}
+                                >
+                                    Delete Routine
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </>
+            )}
+        </div>
     );
 };
