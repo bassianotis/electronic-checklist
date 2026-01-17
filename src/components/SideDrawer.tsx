@@ -3,8 +3,8 @@ import { SideToolkit } from './SideToolkit';
 
 interface SideDrawerProps {
     isOpen: boolean;
-    activePanel: 'archive' | 'routines' | 'ideas' | null;
-    onToggle: (panel: 'archive' | 'routines' | 'ideas') => void;
+    activePanel: 'archive' | 'routines' | 'ideas' | 'settings' | null;
+    onToggle: (panel: 'archive' | 'routines' | 'ideas' | 'settings') => void;
     onClose: () => void;
     children: React.ReactNode;
 }

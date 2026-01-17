@@ -1,5 +1,5 @@
 // Imports updated
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
     DndContext,
     closestCenter,
@@ -11,37 +11,34 @@ import {
 } from '@dnd-kit/core';
 import type { DragEndEvent, DragStartEvent, DragOverEvent } from '@dnd-kit/core';
 import {
-    SortableContext,
     sortableKeyboardCoordinates,
-    verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { TaskCard } from './TaskCard';
-import { InlineTaskEditor } from './InlineTaskEditor';
 import { useTaskStore } from '../store/store';
 import type { WeekKey, Item } from '../types';
 
 import { compareWeekKeys, addWeeks, getFirstDayOfWeek } from '../utils/timeUtils';
 import dayjs from 'dayjs';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
-import autoAnimate from '@formkit/auto-animate';
 import {
     resolveId,
     isSpacerId,
     calculateInsertionIndex,
     DRAG_ACTIVATION_DISTANCE
 } from '../utils/dragUtils';
-import { getProjectedItems } from '../utils/dragProjection';
 
 // Components
 import { SideDrawer } from './SideDrawer';
 import { IdeasPanel } from './IdeasPanel';
 import { RoutineManager } from './RoutineManager';
 import { ArchivePanel } from './ArchivePanel';
+import { SettingsPanel } from './SettingsPanel';
+import { WeekSection } from './WeekSection';
 
 interface TaskListProps {
     onPresentWeekVisible?: (visible: boolean, isAbove?: boolean) => void;
-    activePanel: 'archive' | 'routines' | 'ideas' | null;
-    onTogglePanel: (panel: 'archive' | 'routines' | 'ideas') => void;
+    activePanel: 'archive' | 'routines' | 'ideas' | 'settings' | null;
+    onTogglePanel: (panel: 'archive' | 'routines' | 'ideas' | 'settings') => void;
     onClosePanel: () => void;
 }
 
@@ -122,7 +119,19 @@ export const TaskList: React.FC<TaskListProps> = ({
         return acc;
     }, {} as Record<WeekKey, typeof visibleItems>);
 
-    const sortedWeeks = Object.keys(itemsByWeek).sort(compareWeekKeys);
+    // Generate default "Year View" weeks
+    const defaultWeeks = new Set<WeekKey>();
+    // Include present week + next 51 weeks (Full Year)
+    defaultWeeks.add(presentWeek);
+    for (let i = 1; i < 52; i++) {
+        defaultWeeks.add(addWeeks(presentWeek, i));
+    }
+
+    // Merge with any existing data weeks
+    Object.keys(itemsByWeek).forEach(w => defaultWeeks.add(w));
+
+    // Sort all weeks
+    const sortedWeeks = Array.from(defaultWeeks).sort(compareWeekKeys);
 
     // Only sync logic if needed, currently unused
     useEffect(() => {
@@ -197,13 +206,16 @@ export const TaskList: React.FC<TaskListProps> = ({
         const maybeItem = allDragItems.find(i => i.id === overId);
         if (maybeItem) {
             overItem = maybeItem;
+            // If dragging over an item, use that item's week logic
             if (dragOrigin && overId === dragOrigin.item.id && isSpacerId(rawOverId)) {
                 overWeek = dragOrigin.week;
             } else {
                 overWeek = maybeItem.week;
             }
         } else {
-            if (!isSpacerId(rawOverId)) {
+            // Check if over a week drop zone directly
+            // Is it a week key?
+            if (!isSpacerId(rawOverId) && sortedWeeks.includes(rawOverId)) {
                 overWeek = rawOverId as WeekKey;
             }
         }
@@ -251,6 +263,7 @@ export const TaskList: React.FC<TaskListProps> = ({
             if (isSpacerId(rawOverId)) {
                 return;
             }
+            // Check if it's a week key directly
             targetWeek = rawOverId as WeekKey;
         }
 
@@ -281,41 +294,7 @@ export const TaskList: React.FC<TaskListProps> = ({
 
     const [parentConf] = useAutoAnimate();
 
-    const animateRef = useCallback((node: HTMLDivElement | null) => {
-        if (node) {
-            autoAnimate(node, (el, action, oldCoords, newCoords) => {
-                let keyframes;
-                if (action === 'add') {
-                    keyframes = [
-                        { transform: 'scale(1)', opacity: 1 },
-                        { transform: 'scale(1)', opacity: 1 }
-                    ];
-                }
-                if (action === 'remove') {
-                    const isDraggedItem = activeId && el.getAttribute('data-item-id') === activeId;
-                    if (el.hasAttribute('data-is-spacer') || isDraggedItem) {
-                        keyframes = [
-                            { opacity: 0 },
-                            { opacity: 0 }
-                        ];
-                    } else {
-                        keyframes = [
-                            { transform: 'scale(1)', opacity: 1 },
-                            { transform: 'scale(1)', opacity: 0 }
-                        ];
-                    }
-                }
-                if (action === 'remain' && oldCoords && newCoords) {
-                    const deltaX = oldCoords.left - newCoords.left;
-                    const deltaY = oldCoords.top - newCoords.top;
-                    const start = { transform: `translate(${deltaX}px, ${deltaY}px)` };
-                    const end = { transform: `translate(0, 0)` };
-                    keyframes = [start, end];
-                }
-                return new KeyframeEffect(el, keyframes || [], { duration: 250, easing: 'ease-in-out' });
-            });
-        }
-    }, [activeId]);
+    // animateRef was moved to WeekSection
 
     return (
         <div className="task-list">
@@ -360,85 +339,30 @@ export const TaskList: React.FC<TaskListProps> = ({
                         else relativeClass = 'header-past';
 
                         return (
-                            <div key={week} className="week-section" ref={isCurrentWeek ? presentWeekRef : undefined} data-week={week} data-is-present={isCurrentWeek}>
-                                {/* Headers */}
-                                {showHeader && headerLabel && !sectionInfo.isNewMonth && (
-                                    <div className="week-header-row">
-                                        <div className={`section-header relative-header ${relativeClass}`}>
-                                            {headerLabel}
-                                        </div>
-                                        <div className="week-date-label">{weekDateLabel}</div>
-                                    </div>
-                                )}
-                                {showCombinedMonthDate && (
-                                    <div className="section-header month-header">
-                                        {combinedMonthDateLabel}
-                                    </div>
-                                )}
-                                {!showHeader && (
-                                    <div className="week-date-label standalone">{weekDateLabel}</div>
-                                )}
-
-                                {/* Sortable Context for this Week */}
-                                <SortableContext
-                                    id={week} // Critical: Container ID is the week key
-                                    items={weekItems.map(i => i.id)}
-                                    strategy={verticalListSortingStrategy}
-                                >
-                                    <div className="week-items-container" ref={animateRef}>
-                                        {(() => {
-                                            const renderItems = getProjectedItems(weekItems, dragOrigin, week);
-                                            return renderItems.map((item) => (
-                                                <React.Fragment key={item.id ?? 'spacer-fragment'}>
-                                                    {!item.isSpacer && editingAt?.week === week && editingAt?.orderIndex === item.orderIndex ? (
-                                                        <InlineTaskEditor
-                                                            week={week}
-                                                            orderIndex={item.orderIndex}
-                                                            onComplete={() => setEditingAt(null)}
-                                                            onCancel={() => setEditingAt(null)}
-                                                        />
-                                                    ) : !item.isSpacer && (
-                                                        <div
-                                                            className={`insertion-point ${hoveringAt?.week === week && hoveringAt?.orderIndex === item.orderIndex ? 'visible' : ''}`}
-                                                            onMouseEnter={() => setHoveringAt({ week, orderIndex: item.orderIndex })}
-                                                            onMouseLeave={() => setHoveringAt(null)}
-                                                            onClick={() => setEditingAt({ week, orderIndex: item.orderIndex })}
-                                                        >
-                                                            <span className="insertion-plus">+</span>
-                                                        </div>
-                                                    )}
-
-                                                    <TaskCard
-                                                        item={item}
-                                                        routine={item.routineId ? routineMap.get(item.routineId) : undefined}
-                                                        presentWeek={presentWeek}
-                                                        currentTime={currentTime}
-                                                        isSpacer={item.isSpacer}
-                                                    />
-                                                </React.Fragment>
-                                            ));
-                                        })()}
-
-                                        {editingAt?.week === week && editingAt?.orderIndex === weekItems.length ? (
-                                            <InlineTaskEditor
-                                                week={week}
-                                                orderIndex={weekItems.length}
-                                                onComplete={() => setEditingAt(null)}
-                                                onCancel={() => setEditingAt(null)}
-                                            />
-                                        ) : (
-                                            <div
-                                                className={`insertion-point ${hoveringAt?.week === week && hoveringAt?.orderIndex === weekItems.length ? 'visible' : ''}`}
-                                                onMouseEnter={() => setHoveringAt({ week, orderIndex: weekItems.length })}
-                                                onMouseLeave={() => setHoveringAt(null)}
-                                                onClick={() => setEditingAt({ week, orderIndex: weekItems.length })}
-                                            >
-                                                <span className="insertion-plus">+</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                </SortableContext>
-                            </div>
+                            <WeekSection
+                                key={week}
+                                week={week}
+                                weekItems={weekItems}
+                                isPresentWeek={isCurrentWeek}
+                                sectionInfo={sectionInfo}
+                                monthsShown={monthsShown}
+                                dragOrigin={dragOrigin}
+                                editingAt={editingAt}
+                                hoveringAt={hoveringAt}
+                                activeId={activeId}
+                                routineMap={routineMap}
+                                presentWeek={presentWeek}
+                                currentTime={currentTime}
+                                onSetEditingAt={setEditingAt}
+                                onSetHoveringAt={setHoveringAt}
+                                presentWeekRef={presentWeekRef}
+                                weekDateLabel={weekDateLabel}
+                                combinedMonthDateLabel={combinedMonthDateLabel}
+                                relativeClass={relativeClass}
+                                showHeader={showHeader}
+                                showCombinedMonthDate={showCombinedMonthDate}
+                                headerLabel={headerLabel || ''}
+                            />
                         );
                     })}
                 </div>
@@ -457,6 +381,9 @@ export const TaskList: React.FC<TaskListProps> = ({
                     )}
                     {activePanel === 'ideas' && (
                         <IdeasPanel isOpen={true} onClose={onClosePanel} />
+                    )}
+                    {activePanel === 'settings' && (
+                        <SettingsPanel isOpen={true} onClose={onClosePanel} />
                     )}
                 </SideDrawer>
 

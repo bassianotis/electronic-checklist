@@ -3,12 +3,12 @@ import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-ro
 import { TaskList } from './components/TaskList';
 import { JumpToToday } from './components/JumpToToday';
 import { WeekNav } from './components/WeekNav';
-import { DevPanel } from './components/DevPanel';
+import { SyncIndicator } from './components/SyncIndicator';
+import { AuthScreen } from './components/AuthScreen';
 import { useTaskStore } from './store/store';
+import { useAuthStore } from './store/authStore';
 import { ThemeProvider } from './context/ThemeContext';
 import './index.css';
-
-
 
 const TasksPage: React.FC = () => {
     const navigate = useNavigate();
@@ -16,7 +16,7 @@ const TasksPage: React.FC = () => {
     const { getPresentWeek, spawnRoutineTasks, rolloverPastItems } = useTaskStore();
 
     // State
-    const [activePanel, setActivePanel] = useState<'archive' | 'routines' | 'ideas' | null>(null);
+    const [activePanel, setActivePanel] = useState<'archive' | 'routines' | 'ideas' | 'settings' | null>(null);
     const [showJumpToToday, setShowJumpToToday] = useState(false);
     const [isAboveWeek, setIsAboveWeek] = useState(false);
     const [currentVisibleWeek, setCurrentVisibleWeek] = useState<string | undefined>(undefined);
@@ -27,9 +27,7 @@ const TasksPage: React.FC = () => {
         spawnRoutineTasks();
     }, [rolloverPastItems, spawnRoutineTasks]);
 
-    // Handle scroll to week... (omitted code remains same, referencing it by block if possible or just leaving it alone? The user wants me to edit. I will effectively replace the component body)
-
-    // ... helper functions for scroll ...
+    // Handle scroll to week logic
     const scrollToWeek = useCallback((weekKey: string) => {
         const container = document.querySelector('.tasks-main');
         const weekElement = document.querySelector(`[data-week="${weekKey}"]`);
@@ -86,12 +84,14 @@ const TasksPage: React.FC = () => {
         scrollToWeek(getPresentWeek());
     }, [getPresentWeek, scrollToWeek]);
 
-    const handleTogglePanel = (panel: 'archive' | 'routines' | 'ideas') => {
+    const handleTogglePanel = (panel: 'archive' | 'routines' | 'ideas' | 'settings') => {
         setActivePanel(prev => prev === panel ? null : panel);
     };
 
     return (
         <div className={`tasks-layout theme-default ${activePanel ? 'panel-open' : ''}`}>
+            <SyncIndicator />
+
             <div className="tasks-main">
                 <WeekNav onNavigate={scrollToWeek} currentVisibleWeek={currentVisibleWeek} />
 
@@ -109,15 +109,60 @@ const TasksPage: React.FC = () => {
 };
 
 const App: React.FC = () => {
+    const { isAuthenticated, isLoading, checkAuth } = useAuthStore();
+    const { hydrateFromApi, setTime } = useTaskStore();
+
+    useEffect(() => {
+        checkAuth();
+    }, [checkAuth]);
+
+    // Time Automation: Reset on mount & tick every minute
+    useEffect(() => {
+        // Always wake up to real time on load
+        setTime(new Date().toISOString());
+
+        // Keep time fresh
+        const timeInterval = setInterval(() => {
+            if (!useTaskStore.getState().isTimeFrozen) {
+                setTime(new Date().toISOString());
+            }
+        }, 60000); // 1 minute
+
+        return () => clearInterval(timeInterval);
+    }, [setTime]);
+
+    useEffect(() => {
+        if (isAuthenticated) {
+            // Initial hydrate
+            hydrateFromApi();
+
+            // Poll for data updates every 30 seconds
+            const interval = setInterval(() => {
+                hydrateFromApi();
+            }, 30000);
+            return () => clearInterval(interval);
+        }
+    }, [isAuthenticated, hydrateFromApi]);
+
+    if (isLoading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-neutral-50 text-neutral-500">
+                Loading...
+            </div>
+        );
+    }
+
+    if (!isAuthenticated) {
+        return <AuthScreen />;
+    }
+
     return (
         <ThemeProvider>
             <BrowserRouter>
                 <div className="app">
                     <Routes>
                         <Route path="/" element={<TasksPage />} />
-                        <Route path="/tasks" element={<TasksPage />} />
                     </Routes>
-                    <DevPanel />
                 </div>
             </BrowserRouter>
         </ThemeProvider>

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Item, Routine, WeekKey } from '../types';
+import type { Item, Routine, WeekKey, AppState } from '../types';
 import { IDEAS_WEEK_KEY } from '../types';
 import { DEFAULT_NOW, generateDummyData } from '../data/dummyData';
 import {
@@ -14,21 +14,21 @@ import {
     removeOutdatedRoutineTasks
 } from '../utils/routineSpawner';
 import { executeRolloverLogic } from '../utils/rolloverUtils';
+import { api } from '../api/client';
+import { mergeState } from '../utils/mergeUtils';
 import dayjs from 'dayjs';
 
-interface TaskStore {
-    items: Item[];
-    routines: Routine[];
-    currentTime: string;
-    allowUncomplete: boolean;
+interface TaskStore extends AppState {
+    syncStatus: 'idle' | 'syncing' | 'error' | 'offline';
+    lastSyncTime?: number;
 
     // Actions
     completeItem: (id: string) => void;
     uncompleteItem: (id: string) => void;
     startItem: (id: string) => void;
     incrementProgress: (id: string, minutes: number) => void;
-    incrementOccurrence: (id: string) => void; // For multi-occurrence tasks
-    decrementOccurrence: (id: string) => void; // For undoing multi-occurrence
+    incrementOccurrence: (id: string) => void;
+    decrementOccurrence: (id: string) => void;
     reorderItem: (id: string, newOrderIndex: number, newWeek?: WeekKey) => void;
     moveToWeek: (id: string, week: WeekKey) => void;
     addItem: (title: string, week: WeekKey, orderIndex: number, options?: { minutesGoal?: number; targetCount?: number; dueDateISO?: string }) => string;
@@ -40,12 +40,21 @@ interface TaskStore {
     addRoutine: (routine: Omit<Routine, 'id'>) => string;
     updateRoutine: (id: string, updates: Partial<Routine>) => void;
     spawnRoutineTasks: () => void;
-    rolloverPastItems: () => void; // Move incomplete past items to present week
+    rolloverPastItems: () => void;
     executeRollover: () => void;
     advanceTime: (days: number) => void;
     setTime: (isoTime: string) => void;
     toggleAllowUncomplete: () => void;
     resetData: () => void;
+
+    // Time Management
+    isTimeFrozen: boolean;
+    toggleTimeFreeze: () => void;
+    resetTime: () => void;
+
+    // Sync Actions
+    hydrateFromApi: () => Promise<void>;
+    triggerSync: () => void;
 
     // Computed helpers
     getPresentWeek: () => WeekKey;
@@ -57,6 +66,9 @@ interface TaskStore {
 import { getInitialData } from '../utils/initialization';
 
 const initialData = getInitialData();
+const DATA_VERSION = 0;
+
+let syncTimeout: any = null;
 
 export const useTaskStore = create<TaskStore>()(
     persist(
@@ -64,10 +76,107 @@ export const useTaskStore = create<TaskStore>()(
             items: initialData.items,
             routines: initialData.routines,
             currentTime: DEFAULT_NOW,
+            isTimeFrozen: false,
             allowUncomplete: false,
+            userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            dataVersion: DATA_VERSION,
+            syncStatus: 'idle',
+
+            triggerSync: () => {
+                if (syncTimeout) clearTimeout(syncTimeout);
+
+                set({ syncStatus: 'syncing' });
+
+                syncTimeout = setTimeout(async () => {
+                    const state = get();
+                    // Strip functions and UI state
+                    const payload: AppState = {
+                        items: state.items,
+                        routines: state.routines,
+                        currentTime: state.currentTime,
+                        allowUncomplete: state.allowUncomplete,
+                        userTimezone: state.userTimezone,
+                        lastRolledWeek: state.lastRolledWeek,
+                        dataVersion: state.dataVersion,
+                    };
+
+                    try {
+                        const response = await api.syncData(payload, state.dataVersion);
+
+                        if (response.status === 204 || response.status === 200) {
+                            const newVersion = parseInt(response.headers?.get('ETag')?.replace(/"/g, '') || '0', 10);
+                            set({
+                                syncStatus: 'idle',
+                                lastSyncTime: Date.now(),
+                                dataVersion: newVersion || state.dataVersion // Updates version
+                            });
+                        }
+                    } catch (err: any) {
+                        console.error('Sync failed', err);
+
+                        if (err.status === 412) {
+                            // Conflict!
+                            // Re-fetch logic
+                            try {
+                                const remoteData = await api.fetchData(); // Fetch latest
+                                if (remoteData.data) {
+                                    const currentState = get();
+                                    const merged = mergeState(currentState, remoteData.data);
+                                    set({
+                                        ...merged,
+                                        dataVersion: remoteData.version || currentState.dataVersion,
+                                        syncStatus: 'idle'
+                                    });
+                                    // Optionally verify/sync back immediately
+                                } else if (remoteData.version === 0) {
+                                    // Server is empty/reset. We should adopt version 0 as base so next sync works.
+                                    // This handles "First push to empty server" if local was > 0.
+                                    set({ dataVersion: 0 });
+                                    // Trigger sync again immediately
+                                    get().triggerSync();
+                                }
+                            } catch (fetchErr) {
+                                set({ syncStatus: 'error' });
+                            }
+                        } else {
+                            set({ syncStatus: 'error' });
+                        }
+                    }
+                }, 1000); // Debounce 1s
+            },
+
+            hydrateFromApi: async () => {
+                set({ syncStatus: 'syncing' });
+                try {
+                    const currentVersion = get().dataVersion;
+                    const response = await api.fetchData(currentVersion);
+
+                    if (response.status === 304) {
+                        set({ syncStatus: 'idle', lastSyncTime: Date.now() });
+                        return;
+                    }
+
+                    if (response.data) {
+                        const currentState = get();
+                        const merged = mergeState(currentState, response.data);
+                        set({
+                            ...merged,
+                            dataVersion: response.version || currentState.dataVersion,
+                            syncStatus: 'idle',
+                            lastSyncTime: Date.now()
+                        });
+                    } else {
+                        set({ syncStatus: 'idle' });
+                    }
+                } catch (err) {
+                    console.error('Hydrate failed', err);
+                    set({ syncStatus: 'error' });
+                }
+            },
 
             completeItem: (id: string) => {
-                const { currentTime } = get();
+                const { currentTime, triggerSync } = get();
+                const nowTs = Date.now();
                 set((state) => ({
                     items: state.items.map((item) =>
                         item.id === id
@@ -75,42 +184,43 @@ export const useTaskStore = create<TaskStore>()(
                                 ...item,
                                 status: 'complete' as const,
                                 completedAt: currentTime,
+                                updatedAt: nowTs
                             }
                             : item
                     ),
                 }));
+                triggerSync();
             },
 
             uncompleteItem: (id: string) => {
-                set((state) => {
-                    const item = state.items.find((i) => i.id === id);
-                    if (!item || item.status !== 'complete') return state;
-
-                    // Keep item in same position, just change status
-                    return {
-                        items: state.items.map((i) =>
-                            i.id === id
-                                ? {
-                                    ...i,
-                                    status: 'incomplete' as const,
-                                    completedAt: undefined,
-                                }
-                                : i
-                        ),
-                    };
-                });
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => ({
+                    items: state.items.map((i) =>
+                        i.id === id
+                            ? {
+                                ...i,
+                                status: 'incomplete' as const,
+                                completedAt: undefined,
+                                updatedAt: nowTs
+                            }
+                            : i
+                    ),
+                }));
+                triggerSync();
             },
 
             startItem: (id: string) => {
-                const { getPresentWeek } = get();
+                const { getPresentWeek, triggerSync } = get();
                 const presentWeek = getPresentWeek();
+                const nowTs = Date.now();
 
                 set((state) => {
                     const item = state.items.find((i) => i.id === id);
                     if (!item || item.week === presentWeek) return state;
 
                     const presentIncomplete = state.items.filter(
-                        (i) => i.week === presentWeek && i.status === 'incomplete'
+                        (i) => i.week === presentWeek && i.status === 'incomplete' && !i.deletedAt
                     );
                     const maxOrder = Math.max(0, ...presentIncomplete.map((i) => i.orderIndex));
 
@@ -121,23 +231,24 @@ export const useTaskStore = create<TaskStore>()(
                                     ...i,
                                     week: presentWeek,
                                     orderIndex: maxOrder + 1,
+                                    updatedAt: nowTs
                                 }
                                 : i
                         ),
                     };
                 });
+                triggerSync();
             },
 
             incrementProgress: (id: string, minutes: number) => {
-                const { currentTime } = get();
+                const { currentTime, triggerSync } = get();
+                const nowTs = Date.now();
                 set((state) => ({
                     items: state.items.map((item) => {
                         if (item.id !== id) return item;
 
                         const newMinutes = (item.minutes ?? 0) + minutes;
                         const minutesGoal = item.minutesGoal ?? 0;
-
-                        // Check combined goals
                         const minutesMet = minutesGoal === 0 || newMinutes >= minutesGoal;
                         const countMet = !item.targetCount || (item.completedCount ?? 0) >= item.targetCount;
 
@@ -147,16 +258,19 @@ export const useTaskStore = create<TaskStore>()(
                                 minutes: newMinutes,
                                 status: 'complete' as const,
                                 completedAt: currentTime,
+                                updatedAt: nowTs
                             };
                         }
 
-                        return { ...item, minutes: newMinutes };
+                        return { ...item, minutes: newMinutes, updatedAt: nowTs };
                     }),
                 }));
+                triggerSync();
             },
 
             incrementOccurrence: (id: string) => {
-                const { currentTime } = get();
+                const { currentTime, triggerSync } = get();
+                const nowTs = Date.now();
                 set((state) => ({
                     items: state.items.map((item) => {
                         if (item.id !== id) return item;
@@ -165,29 +279,32 @@ export const useTaskStore = create<TaskStore>()(
                         const targetCount = item.targetCount ?? 1;
                         const newCount = currentCount + 1;
 
-                        // Check combined goals
                         const countMet = newCount >= targetCount;
                         const minutesMet = !item.minutesGoal || (item.minutes ?? 0) >= item.minutesGoal;
 
-                        // If we've met ALL goals, mark as complete
                         if (countMet && minutesMet) {
                             return {
                                 ...item,
                                 completedCount: newCount,
                                 status: 'complete' as const,
                                 completedAt: currentTime,
+                                updatedAt: nowTs
                             };
                         }
 
                         return {
                             ...item,
                             completedCount: newCount,
+                            updatedAt: nowTs
                         };
                     }),
                 }));
+                triggerSync();
             },
 
             decrementOccurrence: (id: string) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
                 set((state) => ({
                     items: state.items.map((item) => {
                         if (item.id !== id) return item;
@@ -198,33 +315,35 @@ export const useTaskStore = create<TaskStore>()(
                         return {
                             ...item,
                             completedCount: currentCount - 1,
-                            // If was complete, mark as incomplete
                             status: 'incomplete' as const,
                             completedAt: undefined,
+                            updatedAt: nowTs
                         };
                     }),
                 }));
+                triggerSync();
             },
 
             reorderItem: (id: string, newOrderIndex: number, newWeek?: WeekKey) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
                 set((state) => {
                     const item = state.items.find((i) => i.id === id);
                     if (!item) return state;
 
                     const targetWeek = newWeek ?? item.week;
 
-                    // Include ALL items in the week (not just incomplete) for proper reordering
                     const weekItems = state.items
-                        .filter((i) => i.week === targetWeek && !i.archived && i.id !== id)
+                        .filter((i) => i.week === targetWeek && !i.archived && i.id !== id && !i.deletedAt)
                         .sort((a, b) => a.orderIndex - b.orderIndex);
 
                     const reorderedItems = [...weekItems];
                     const insertIndex = Math.min(newOrderIndex, reorderedItems.length);
                     reorderedItems.splice(insertIndex, 0, { ...item, week: targetWeek });
 
-                    const updates = new Map<string, { orderIndex: number; week: WeekKey }>();
+                    const updates = new Map<string, { orderIndex: number; week: WeekKey; updatedAt: number }>();
                     reorderedItems.forEach((i, idx) => {
-                        updates.set(i.id, { orderIndex: idx, week: targetWeek });
+                        updates.set(i.id, { orderIndex: idx, week: targetWeek, updatedAt: nowTs });
                     });
 
                     return {
@@ -237,36 +356,41 @@ export const useTaskStore = create<TaskStore>()(
                         }),
                     };
                 });
+                triggerSync();
             },
 
             moveToWeek: (id: string, week: WeekKey) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
                 set((state) => {
                     const item = state.items.find((i) => i.id === id);
                     if (!item) return state;
 
                     const weekIncomplete = state.items.filter(
-                        (i) => i.week === week && i.status === 'incomplete'
+                        (i) => i.week === week && i.status === 'incomplete' && !i.deletedAt
                     );
                     const maxOrder = Math.max(0, ...weekIncomplete.map((i) => i.orderIndex));
 
                     return {
                         items: state.items.map((i) =>
                             i.id === id
-                                ? { ...i, week, orderIndex: maxOrder + 1 }
+                                ? { ...i, week, orderIndex: maxOrder + 1, updatedAt: nowTs }
                                 : i
                         ),
                     };
                 });
+                triggerSync();
             },
 
             addItem: (title: string, week: WeekKey, orderIndex: number, options?: { minutesGoal?: number; targetCount?: number; dueDateISO?: string }) => {
+                const { triggerSync } = get();
                 const id = `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                const nowTs = Date.now();
 
                 set((state) => {
-                    // Shift items at or after orderIndex down
                     const updatedItems = state.items.map((item) => {
-                        if (item.week === week && !item.archived && item.orderIndex >= orderIndex) {
-                            return { ...item, orderIndex: item.orderIndex + 1 };
+                        if (item.week === week && !item.archived && !item.deletedAt && item.orderIndex >= orderIndex) {
+                            return { ...item, orderIndex: item.orderIndex + 1, updatedAt: nowTs };
                         }
                         return item;
                     });
@@ -280,24 +404,25 @@ export const useTaskStore = create<TaskStore>()(
                         ...(options?.minutesGoal && { minutesGoal: options.minutesGoal, minutes: 0 }),
                         ...(options?.targetCount && options.targetCount > 1 && { targetCount: options.targetCount, completedCount: 0 }),
                         ...(options?.dueDateISO && { hasDueDate: true, dueDateISO: options.dueDateISO }),
+                        updatedAt: nowTs
                     };
 
                     return { items: [...updatedItems, newItem] };
                 });
-
+                triggerSync();
                 return id;
             },
 
             updateItem: (id: string, updates: { title?: string; minutesGoal?: number; targetCount?: number; dueDateISO?: string; notes?: string }) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
                 set((state) => ({
                     items: state.items.map((item) => {
                         if (item.id !== id) return item;
 
-                        const updated = { ...item };
+                        const updated = { ...item, updatedAt: nowTs };
 
-                        if (updates.title !== undefined) {
-                            updated.title = updates.title;
-                        }
+                        if (updates.title !== undefined) updated.title = updates.title;
                         if (updates.minutesGoal !== undefined) {
                             updated.minutesGoal = updates.minutesGoal;
                             if (updates.minutesGoal > 0 && updated.minutes === undefined) {
@@ -318,7 +443,6 @@ export const useTaskStore = create<TaskStore>()(
                             updated.notes = updates.notes.slice(0, 140) || undefined;
                         }
 
-                        // Re-evaluate completion status
                         const minutesMet = !updated.minutesGoal || (updated.minutes ?? 0) >= updated.minutesGoal;
                         const countMet = !updated.targetCount || (updated.completedCount ?? 0) >= updated.targetCount;
                         const requirementsMet = minutesMet && countMet;
@@ -328,142 +452,133 @@ export const useTaskStore = create<TaskStore>()(
                             updated.completedAt = undefined;
                         }
 
-                        // Optional: Auto-complete if now met? 
-                        // User prompt implies only "uncheck", but usually if I lower the goal I expect it to complete?
-                        // "In the scenario that I meet the time goal... the box should be unchecked"
-                        // Safer to only auto-complete if implicit action (like increment), but for edit, if I change 30m -> 15m and I have 20m, it SHOULD complete?
-                        // I will stick to "Uncomplete if not met" for now to be safe, unless user explicitly dragged.
-
                         return updated;
                     }),
                 }));
+                triggerSync();
             },
 
             deleteRoutine: (id: string, removeRelatedTasks: boolean) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
                 set((state) => {
                     const routine = state.routines.find(r => r.id === id);
                     if (!routine) return state;
 
-                    let filteredItems = state.items;
+                    let updatedItems = state.items;
 
                     if (removeRelatedTasks) {
-                        // Remove non-started items that are linked to this routine
-                        // A task is "started" if it has any progress (minutes > 0, completedCount > 0, or status !== 'incomplete')
-                        filteredItems = state.items.filter(item => {
-                            if (item.routineId !== id) return true;
-
-                            // Check if the item has been started
+                        updatedItems = state.items.map(item => {
+                            if (item.routineId !== id) return item;
                             const hasProgress = (item.minutes && item.minutes > 0) ||
                                 (item.completedCount && item.completedCount > 0) ||
                                 item.status !== 'incomplete';
-
-                            // Keep if it has progress
-                            return hasProgress;
+                            if (!hasProgress) {
+                                return { ...item, deletedAt: nowTs, updatedAt: nowTs };
+                            }
+                            return item;
                         });
                     }
 
+                    const updatedRoutines = state.routines.map(r =>
+                        r.id === id ? { ...r, deletedAt: nowTs, updatedAt: nowTs } : r
+                    );
+
                     return {
-                        routines: state.routines.filter(r => r.id !== id),
-                        items: filteredItems,
+                        routines: updatedRoutines,
+                        items: updatedItems,
                     };
                 });
+                triggerSync();
             },
 
             addRoutine: (routineData: Omit<Routine, 'id'>) => {
-                const id = `routine-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                const routine: Routine = { ...routineData, id };
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                const id = `routine-${nowTs}-${Math.random().toString(36).substr(2, 9)}`;
+                const routine: Routine = { ...routineData, id, updatedAt: nowTs };
 
                 set((state) => {
-                    // Add routine
                     const newRoutines = [...state.routines, routine];
-
-                    // Spawn tasks for this routine immediately
                     const visibleWeeks = getVisibleWeeks(state.currentTime);
                     const newTasks = spawnTasksForRoutine(routine, visibleWeeks, state.items);
+                    const newTasksStamped = newTasks.map(t => ({ ...t, updatedAt: nowTs }));
 
                     return {
                         routines: newRoutines,
-                        items: [...state.items, ...newTasks],
+                        items: [...state.items, ...newTasksStamped],
                     };
                 });
-
+                triggerSync();
                 return id;
             },
 
             updateRoutine: (id: string, updates: Partial<Routine>) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
                 set((state) => {
                     const routineIndex = state.routines.findIndex(r => r.id === id);
                     if (routineIndex === -1) return state;
 
-                    const updatedRoutine = { ...state.routines[routineIndex], ...updates };
+                    const updatedRoutine = { ...state.routines[routineIndex], ...updates, updatedAt: nowTs };
                     const newRoutines = [...state.routines];
                     newRoutines[routineIndex] = updatedRoutine;
 
-                    // Remove tasks that no longer match the schedule (handles cadence changes to less frequent)
                     const itemsAfterRemoval = removeOutdatedRoutineTasks(updatedRoutine, state.items);
-
-                    // Update remaining non-started tasks with new values
                     const updatedItems = updateRoutineTasks(updatedRoutine, itemsAfterRemoval);
-
-                    // Spawn any new tasks (in case schedule expanded)
                     const visibleWeeks = getVisibleWeeks(state.currentTime);
                     const newTasks = spawnTasksForRoutine(updatedRoutine, visibleWeeks, updatedItems);
+                    const newTasksStamped = newTasks.map(t => ({ ...t, updatedAt: nowTs }));
 
                     return {
                         routines: newRoutines,
-                        items: [...updatedItems, ...newTasks],
+                        items: [...updatedItems, ...newTasksStamped],
                     };
                 });
+                triggerSync();
             },
 
             spawnRoutineTasks: () => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
                 set((state) => {
                     const visibleWeeks = getVisibleWeeks(state.currentTime);
                     let allItems = [...state.items];
-
                     for (const routine of state.routines) {
+                        if (routine.deletedAt) continue;
                         const newTasks = spawnTasksForRoutine(routine, visibleWeeks, allItems);
-                        allItems = [...allItems, ...newTasks];
+                        const newTasksStamped = newTasks.map(t => ({ ...t, updatedAt: nowTs }));
+                        allItems = [...allItems, ...newTasksStamped];
                     }
-
                     return { items: allItems };
                 });
+                triggerSync();
             },
 
             rolloverPastItems: () => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
                 set((state) => {
                     const presentWeek = getWeekKey(state.currentTime);
-
                     const updatedItems = state.items.map(item => {
-                        // Skip ideas items (they don't rollover)
-                        if (item.week === IDEAS_WEEK_KEY) {
-                            return item;
-                        }
-
-                        // Skip if already in present/future week
-                        if (compareWeekKeys(item.week, presentWeek) >= 0) {
-                            return item;
-                        }
-
-                        // Skip if complete or archived
-                        if (item.status === 'complete' || item.archived) {
-                            return item;
-                        }
-
-                        // Move incomplete past item to present week
+                        if (item.deletedAt) return item;
+                        if (item.week === IDEAS_WEEK_KEY) return item;
+                        if (compareWeekKeys(item.week, presentWeek) >= 0) return item;
+                        if (item.status === 'complete' || item.archived) return item;
                         return {
                             ...item,
                             week: presentWeek,
-                            // Track original week (only if not already set - preserves earliest origin)
                             originalWeek: item.originalWeek || item.week,
+                            updatedAt: nowTs
                         };
                     });
-
                     return { items: updatedItems };
                 });
+                triggerSync();
             },
 
             executeRollover: () => {
+                const { triggerSync } = get();
                 set((state) => {
                     const now = dayjs(state.currentTime);
                     const daysUntilSunday = (7 - now.day()) % 7 || 7;
@@ -473,17 +588,20 @@ export const useTaskStore = create<TaskStore>()(
 
                     if (oldPresentWeek === newPresentWeek) {
                         const advancedTime = dayjs(newTime).add(7, 'day').toISOString();
-                        return executeRolloverLogic(state, getWeekKey(advancedTime), advancedTime);
+                        const result = executeRolloverLogic(state, getWeekKey(advancedTime), advancedTime);
+                        return result;
                     }
 
                     return executeRolloverLogic(state, newPresentWeek, newTime);
                 });
+                triggerSync();
             },
 
             advanceTime: (days: number) => {
                 set((state) => ({
                     currentTime: dayjs(state.currentTime).add(days, 'day').toISOString(),
                 }));
+                get().rolloverPastItems();
             },
 
             setTime: (isoTime: string) => {
@@ -500,44 +618,63 @@ export const useTaskStore = create<TaskStore>()(
                 set({
                     items: newData.items,
                     routines: newData.routines,
+                    dataVersion: 1,
+                });
+                const { triggerSync } = get();
+                triggerSync();
+            },
+
+            toggleTimeFreeze: () => {
+                set((state) => ({ isTimeFrozen: !state.isTimeFrozen }));
+            },
+
+            resetTime: () => {
+                set({
+                    currentTime: new Date().toISOString(),
+                    isTimeFrozen: false
                 });
             },
 
             archiveItem: (id: string) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
                 set((state) => ({
                     items: state.items.map((item) =>
                         item.id === id
-                            ? { ...item, archived: true }
+                            ? { ...item, archived: true, updatedAt: nowTs }
                             : item
                     ),
                 }));
+                triggerSync();
             },
 
             deleteItem: (id: string) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
                 set((state) => ({
-                    items: state.items.filter((item) => item.id !== id),
+                    items: state.items.map(item => item.id === id ? { ...item, deletedAt: nowTs, updatedAt: nowTs } : item),
                 }));
+                triggerSync();
             },
 
             unarchiveItem: (id: string) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
                 set((state) => {
                     const item = state.items.find((i) => i.id === id);
                     if (!item) return state;
-
-                    // Move to top of its week (orderIndex 0)
-                    // Shift other items in that week down
                     const updatedItems = state.items.map((i) => {
                         if (i.id === id) {
-                            return { ...i, archived: false, orderIndex: 0 };
+                            return { ...i, archived: false, orderIndex: 0, updatedAt: nowTs };
                         }
-                        if (i.week === item.week && !i.archived) {
-                            return { ...i, orderIndex: i.orderIndex + 1 };
+                        if (i.week === item.week && !i.archived && !i.deletedAt) {
+                            return { ...i, orderIndex: i.orderIndex + 1, updatedAt: nowTs };
                         }
                         return i;
                     });
-
                     return { items: updatedItems };
                 });
+                triggerSync();
             },
 
             getPresentWeek: () => {
@@ -547,14 +684,11 @@ export const useTaskStore = create<TaskStore>()(
 
             getVisibleItems: () => {
                 const { items } = get();
-
                 return items
-                    .filter((item) => !item.archived && item.week !== IDEAS_WEEK_KEY) // Only show non-archived items and exclude Ideas
+                    .filter((item) => !item.archived && !item.deletedAt && item.week !== IDEAS_WEEK_KEY)
                     .sort((a, b) => {
                         const weekCompare = compareWeekKeys(a.week, b.week);
                         if (weekCompare !== 0) return weekCompare;
-
-                        // Keep items in their position (by orderIndex)
                         return a.orderIndex - b.orderIndex;
                     });
             },
@@ -562,16 +696,15 @@ export const useTaskStore = create<TaskStore>()(
             getIdeasItems: () => {
                 const { items } = get();
                 return items
-                    .filter((item) => !item.archived && item.week === IDEAS_WEEK_KEY)
+                    .filter((item) => !item.archived && !item.deletedAt && item.week === IDEAS_WEEK_KEY)
                     .sort((a, b) => a.orderIndex - b.orderIndex);
             },
 
             getArchivedItems: () => {
                 const { items } = get();
                 return items
-                    .filter((item) => item.archived)
+                    .filter((item) => item.archived && !item.deletedAt)
                     .sort((a, b) => {
-                        // Sort archived by completion time, most recent first
                         if (a.completedAt && b.completedAt) {
                             return new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime();
                         }
@@ -586,9 +719,10 @@ export const useTaskStore = create<TaskStore>()(
                 routines: state.routines,
                 currentTime: state.currentTime,
                 allowUncomplete: state.allowUncomplete,
+                userTimezone: state.userTimezone,
+                lastRolledWeek: state.lastRolledWeek,
+                dataVersion: state.dataVersion,
             }),
         }
     )
 );
-
-

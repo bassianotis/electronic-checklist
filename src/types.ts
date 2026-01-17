@@ -24,6 +24,8 @@ export interface Item {
     isSpacer?: boolean;
     originalWeek?: WeekKey; // original week if auto-rolled over from past
     notes?: string; // optional notes (max 140 chars)
+    updatedAt?: number; // unix timestamp
+    deletedAt?: number; // unix timestamp for soft delete
 }
 
 export interface Routine {
@@ -40,6 +42,8 @@ export interface Routine {
     endMonth?: number;         // 1-12, if seasonal
     endWeekInMonth?: number;   // 1-5, if seasonal
     notes?: string;
+    updatedAt?: number;
+    deletedAt?: number;
 }
 
 export interface AppState {
@@ -47,4 +51,7 @@ export interface AppState {
     routines: Routine[];
     currentTime: string; // ISO timestamp, mocked "now"
     allowUncomplete: boolean; // DevPanel flag
+    userTimezone: string;
+    lastRolledWeek?: WeekKey;
+    dataVersion: number;
 }

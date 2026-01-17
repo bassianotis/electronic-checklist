@@ -17,7 +17,7 @@ interface ThemeProviderProps {
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     const [theme, setTheme] = useState<Theme>(() => {
         const saved = localStorage.getItem('theme');
-        return (saved as Theme) || 'scrapbook'; // Default to scrapbook for now
+        return (saved as Theme) || 'default'; // Default to clean theme
     });
 
     useEffect(() => {

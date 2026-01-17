@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTaskStore } from '../store/store';
-import { formatDate, relativeLabel, getWeekKey } from '../utils/timeUtils';
+import { getWeekKey } from '../utils/timeUtils';
 import { TaskCard } from './TaskCard';
 
 interface ArchivePanelProps {
@@ -8,10 +8,8 @@ interface ArchivePanelProps {
     onClose: () => void;
 }
 
-
-
 export const ArchivePanel: React.FC<ArchivePanelProps> = ({ isOpen: _isOpen, onClose: _onClose }) => {
-    const { getArchivedItems, currentTime, routines, unarchiveItem } = useTaskStore();
+    const { getArchivedItems, currentTime, routines } = useTaskStore();
 
     const archivedItems = getArchivedItems();
     const presentWeek = getWeekKey(currentTime);

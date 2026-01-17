@@ -597,7 +597,14 @@
     font-size: 0.75rem;
     padding: 8px 16px;
     box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
-    transition: all var(--transition-fast);
+    transition: transform 0.15s ease,
+        box-shadow 0.15s ease,
+        background 0.15s ease,
+        right 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tasks-layout.panel-open .jump-to-today {
+    right: calc(320px + var(--spacing-lg));
 }
 
 [data-theme="default"] .jump-to-today::before {

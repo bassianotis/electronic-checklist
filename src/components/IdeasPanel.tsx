@@ -11,7 +11,7 @@ interface IdeasPanelProps {
     onClose: () => void;
 }
 
-export const IdeasPanel: React.FC<IdeasPanelProps> = ({ isOpen, onClose: _onClose }) => {
+export const IdeasPanel: React.FC<IdeasPanelProps> = ({ onClose: _onClose }) => {
     const { getIdeasItems } = useTaskStore();
     const items = getIdeasItems();
     const [isAdding, setIsAdding] = useState(false);
