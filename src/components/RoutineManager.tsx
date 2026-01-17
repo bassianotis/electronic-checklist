@@ -191,7 +191,7 @@ const SeasonalWeekPicker: React.FC<{
     );
 };
 
-export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen, onClose }) => {
+export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen: _isOpen, onClose: _onClose }) => {
     const { getPresentWeek, routines, deleteRoutine, addRoutine, updateRoutine } = useTaskStore();
     const [isEditing, setIsEditing] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState<{ routineId: string; routineName: string } | null>(null);
@@ -237,10 +237,7 @@ export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen, onClose 
         setIsEditing(true);
     };
 
-    const handleDeleteClick = (e: React.MouseEvent, routine: typeof routines[0]) => {
-        e.stopPropagation();
-        setDeleteConfirm({ routineId: routine.id, routineName: routine.title });
-    };
+
 
     const handleDeleteConfirm = (removeRelatedTasks: boolean) => {
         if (deleteConfirm) {
@@ -289,30 +286,51 @@ export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen, onClose 
     };
 
     return (
-        <div className="routine-manager-content">
+        <div className="side-panel-container">
             {!isEditing ? (
                 // Routine List View
                 <>
-                    <div className="routine-panel-header">
+                    <div className="panel-header">
                         <h2>Routines</h2>
                     </div>
 
-                    <div className="routine-list">
+                    <div className="panel-content">
                         {routines.length === 0 ? (
-                            <div className="routine-list-empty">No routines yet</div>
+                            <div className="panel-empty-state">No routines yet</div>
                         ) : (
-                            routines.map(routine => (
-                                <button
-                                    key={routine.id}
-                                    className="routine-list-item"
-                                    onClick={() => handleEditRoutine(routine)}
-                                >
-                                    <span className="routine-name">{routine.title}</span>
-                                    <span className={`routine-badge ${routine.cadence}`}>
-                                        {routine.cadence}
-                                    </span>
-                                </button>
-                            ))
+                            <div className="routine-list">
+                                {routines.map(routine => (
+                                    <button
+                                        key={routine.id}
+                                        className={`side-panel-card routine-card ${routine.cadence}`} // Remove task-card, add cadence class for border styling
+                                        onClick={() => handleEditRoutine(routine)}
+                                        style={{
+                                            width: '100%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            textAlign: 'left',
+                                            cursor: 'pointer',
+                                            padding: 'var(--spacing-sm) var(--spacing-md)',
+                                            margin: 0,
+                                            gap: 'var(--spacing-md)'
+                                        }}
+                                    >
+
+
+                                        <div className="task-content">
+                                            <div className="task-title" style={{ fontSize: '0.95rem', fontWeight: 600 }}>{routine.title}</div>
+                                            <div className="task-meta">
+                                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
+                                                    {routine.cadence} • {routine.taskType === 'simple' ? 'Check' : routine.taskType === 'multi-occurrence' ? `${routine.targetCount}x` : `${routine.minutesGoal}m`}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Chevron for indication */}
+                                        <span style={{ color: 'var(--text-muted)', fontSize: '1.2rem', marginLeft: 'auto' }}>›</span>
+                                    </button>
+                                ))}
+                            </div>
                         )}
                     </div>
 
@@ -344,12 +362,12 @@ export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen, onClose 
                         </div>
                     )}
 
-                    <div className="routine-panel-header">
+                    <div className="panel-header">
                         <button className="back-btn" onClick={handleBack}>← Back</button>
                         <button className="save-btn" onClick={handleSave}>Save</button>
                     </div>
 
-                    <div className="routine-editor">
+                    <div className="panel-content">
                         {/* Task Type Selection (First) */}
                         <div className="editor-section">
                             <label className="editor-label">Task Type</label>

@@ -13,8 +13,8 @@ interface DragOrigin {
  */
 export const getProjectedItems = (
     items: Item[],
-    dragOrigin: DragOrigin | null,
-    week: WeekKey
+    _dragOrigin: DragOrigin | null,
+    _week: WeekKey
 ): Item[] => {
     // Spacer logic disabled per user request:
     // "So when I drag a card away it doesn't keep that space I drag from 'open' - it immediately closes the space."

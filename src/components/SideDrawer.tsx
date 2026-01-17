@@ -3,13 +3,13 @@ import { SideToolkit } from './SideToolkit';
 
 interface SideDrawerProps {
     isOpen: boolean;
-    activePanel: 'archive' | 'routines' | null;
-    onToggle: (panel: 'archive' | 'routines') => void;
+    activePanel: 'archive' | 'routines' | 'ideas' | null;
+    onToggle: (panel: 'archive' | 'routines' | 'ideas') => void;
     onClose: () => void;
     children: React.ReactNode;
 }
 
-export const SideDrawer: React.FC<SideDrawerProps> = ({ isOpen, activePanel, onToggle, onClose, children }) => {
+export const SideDrawer: React.FC<SideDrawerProps> = ({ isOpen, activePanel, onToggle, onClose: _onClose, children }) => {
     return (
         /* Main Drawer Container */
         <div className={`side-drawer ${isOpen ? 'open' : ''}`}>

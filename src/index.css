@@ -829,17 +829,10 @@ button:disabled {
 }
 
 /* Archive Panel Content */
-.archive-panel-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: var(--spacing-md);
-}
+/* .archive-panel-content removed in favor of .side-panel-container */
 
-.archive-empty {
-    color: var(--text-muted);
-    text-align: center;
-    padding: var(--spacing-xl);
-}
+/* .archive-empty removed -> .panel-empty-state */
+
 
 .archive-list {
     display: flex;
@@ -851,9 +844,23 @@ button:disabled {
     display: flex;
     align-items: flex-start;
     gap: var(--spacing-sm);
-    padding: var(--spacing-sm);
-    background: var(--bg-secondary);
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--bg-primary);
     border-radius: var(--radius-sm);
+    transition: all var(--transition-fast);
+    border: 1px solid transparent;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.archive-item:last-child {
+    border-bottom: 1px solid transparent;
+}
+
+.archive-item:hover {
+    background: var(--bg-primary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    transform: translateY(-1px);
+    z-index: 1;
 }
 
 .archive-check {
@@ -918,6 +925,7 @@ button:disabled {
     z-index: 10;
     padding: 8px 0;
     margin: -8px 0;
+    transform: translateY(-6px);
 }
 
 .insertion-point::before {
@@ -937,16 +945,16 @@ button:disabled {
 .insertion-plus {
     opacity: 0;
     background: var(--bg-secondary);
-    color: var(--text-muted);
-    width: 18px;
-    height: 18px;
-    border: 1px solid var(--border-light);
+    color: var(--text-secondary);
+    width: 20px;
+    height: 20px;
+    border: none;
     border-radius: var(--radius-full);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
-    font-weight: 400;
+    font-size: 16px;
+    font-weight: 500;
     z-index: 1;
     transition: all var(--transition-fast);
 }
@@ -1391,33 +1399,12 @@ button:disabled {
     max-width: 700px;
 }
 
-/* Routine Manager Panel - Fixed sidebar (hovers over content) */
+/* Routine Manager Panel - now uses .side-panel-container */
 .routine-manager-overlay {
     display: none;
 }
 
-.routine-manager-panel {
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: 320px;
-    max-width: 35vw;
-    min-width: 280px;
-    background: var(--bg-primary);
-    border-left: 1px solid var(--border-light);
-    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
-    display: flex;
-    flex-direction: column;
-    transform: translateX(100%);
-    transition: transform 0.3s ease;
-    z-index: 100;
-    overflow-y: auto;
-}
-
-.routine-manager-panel.open {
-    transform: translateX(0);
-}
+/* .routine-manager-panel removed */
 
 /* Shift content left when panel is open so full task list is visible */
 .tasks-layout.panel-open .tasks-main {
@@ -1425,19 +1412,8 @@ button:disabled {
     transition: padding-right 0.3s ease;
 }
 
-.routine-panel-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--spacing-md) var(--spacing-lg);
-    border-bottom: 1px solid var(--border-light);
-}
+/* .routine-panel-header removed -> .panel-header */
 
-.routine-panel-header h2 {
-    font-size: 1.1rem;
-    font-weight: 600;
-    margin: 0;
-}
 
 .panel-close-btn {
     width: 28px;
@@ -1491,25 +1467,77 @@ button:disabled {
 
 /* Routine List */
 .routine-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: var(--spacing-sm) 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
 }
 
-.routine-list-item {
+/* Unified Side Panel Card Style */
+.side-panel-card {
+    background: var(--bg-primary);
+    border-radius: var(--radius-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    padding: var(--spacing-md) var(--spacing-lg);
-    background: transparent;
-    text-align: left;
+    gap: var(--spacing-sm);
+    transition: background var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+    cursor: pointer;
+    border: 1px solid transparent;
     border-bottom: 1px solid var(--border-light);
-    transition: background var(--transition-fast);
 }
 
-.routine-list-item:hover {
-    background: var(--bg-secondary);
+.side-panel-card:last-child {
+    border-bottom: 1px solid transparent;
+}
+
+.side-panel-card:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    transform: translateY(-1px);
+    z-index: 1;
+}
+
+.routine-card {
+    position: relative;
+    background: var(--bg-primary);
+    border-radius: var(--radius-sm);
+    /* Keep slightly rounded right side */
+    border-left: 4px solid var(--border-medium);
+    /* Default spine color */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    /* Subtle depth */
+    transition: all var(--transition-fast);
+}
+
+.routine-card:hover {
+    transform: translateX(2px);
+    /* Pulleys out slightly like a folder */
+    box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.1);
+    background: var(--bg-primary);
+    /* Ensure explicit bg */
+}
+
+/* Color Coded Spines */
+.routine-card.weekly {
+    border-left-color: var(--wk-future);
+}
+
+.routine-card.biweekly {
+    border-left-color: #f59e0b;
+}
+
+.routine-card.monthly {
+    border-left-color: var(--status-complete);
+}
+
+.routine-card.annually {
+    border-left-color: var(--text-muted);
+}
+
+.routine-icon-area {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
 }
 
 .routine-list-empty {
@@ -1788,62 +1816,100 @@ button:disabled {
 
 .editor-hint {
     margin-top: var(--spacing-sm);
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     color: var(--text-muted);
-    font-style: italic;
 }
 
-/* Cadence Options */
-.cadence-options {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--spacing-sm);
-}
-
-.cadence-btn {
+/* Routine Editor Header Buttons */
+.back-btn {
     padding: var(--spacing-sm) var(--spacing-md);
-    font-size: 0.8rem;
-    background: var(--bg-secondary);
-    border-radius: var(--radius-full);
+    background: transparent;
     color: var(--text-secondary);
-    text-transform: capitalize;
+    font-size: 0.9rem;
+    font-weight: 500;
+    border-radius: var(--radius-md);
     transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    gap: 4px;
 }
 
-.cadence-btn:hover {
+.back-btn:hover {
     background: var(--bg-tertiary);
-}
-
-.cadence-btn.active {
-    background: var(--wk-present);
     color: var(--text-primary);
 }
 
-/* Timeframe Options (Year-round / Seasonal) */
+.save-btn {
+    padding: var(--spacing-sm) var(--spacing-lg);
+    background: var(--wk-present);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    transition: all var(--transition-fast);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.save-btn:hover {
+    filter: brightness(0.95);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* Enhanced Form Elements */
+.cadence-options,
 .timeframe-options {
     display: flex;
     gap: var(--spacing-sm);
+    flex-wrap: wrap;
 }
 
+.cadence-btn,
 .timeframe-btn {
-    flex: 1;
     padding: var(--spacing-sm) var(--spacing-md);
-    font-size: 0.85rem;
     background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
     border-radius: var(--radius-md);
+    font-size: 0.85rem;
     color: var(--text-secondary);
     transition: all var(--transition-fast);
 }
 
+.cadence-btn:hover,
 .timeframe-btn:hover {
     background: var(--bg-tertiary);
+    border-color: var(--border-medium);
 }
 
+.cadence-btn.active,
 .timeframe-btn.active {
-    background: var(--wk-present);
+    background: var(--wk-present-bg);
+    border-color: var(--wk-present);
     color: var(--text-primary);
-    font-weight: 600;
+    font-weight: 500;
 }
+
+/* Week Picker Trigger Style */
+.week-picker-trigger {
+    width: 100%;
+    padding: var(--spacing-md);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    text-align: left;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+}
+
+.week-picker-trigger:hover {
+    background: var(--bg-tertiary);
+    border-color: var(--border-medium);
+}
+
+
 
 /* Toggle */
 .toggle-row {
@@ -1972,4 +2038,93 @@ button:disabled {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--spacing-md);
+}
+
+/* Ideas Panel - now uses .side-panel-container */
+/* Specific item styles follow */
+
+.add-idea-btn {
+    width: 100%;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border: 1px dashed var(--border-light);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    text-align: center;
+}
+
+.add-idea-btn:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-color: var(--border-default);
+}
+
+.ideas-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    /* Standard task gap */
+    min-height: 100px;
+    /* Drop target area */
+}
+
+/* Unified Side Panel System */
+.side-panel-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: var(--bg-secondary);
+    overflow: hidden;
+    position: relative;
+}
+
+.panel-header {
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-bottom: 1px solid var(--border-light);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-primary);
+    flex-shrink: 0;
+    min-height: 60px;
+    /* Ensure consistent height */
+}
+
+.panel-header h2 {
+    font-size: 1.125rem;
+    /* 18px */
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.panel-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--spacing-lg) var(--spacing-lg);
+    /* Increased horizontal padding for breathing room */
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.panel-empty-state {
+    padding: var(--spacing-xl);
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    margin-top: var(--spacing-md);
+}
+
+/* Header Actions Wrapper */
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
 }

@@ -3,10 +3,7 @@ import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-ro
 import { TaskList } from './components/TaskList';
 import { JumpToToday } from './components/JumpToToday';
 import { WeekNav } from './components/WeekNav';
-import { RoutineManager } from './components/RoutineManager';
-import { ArchivePanel } from './components/ArchivePanel';
 import { DevPanel } from './components/DevPanel';
-import { SideDrawer } from './components/SideDrawer';
 import { useTaskStore } from './store/store';
 import { ThemeProvider } from './context/ThemeContext';
 import './index.css';
@@ -17,11 +14,12 @@ const TasksPage: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const { getPresentWeek, spawnRoutineTasks, rolloverPastItems } = useTaskStore();
+
+    // State
+    const [activePanel, setActivePanel] = useState<'archive' | 'routines' | 'ideas' | null>(null);
     const [showJumpToToday, setShowJumpToToday] = useState(false);
     const [isAboveWeek, setIsAboveWeek] = useState(false);
     const [currentVisibleWeek, setCurrentVisibleWeek] = useState<string | undefined>(undefined);
-    const [showRoutineManager, setShowRoutineManager] = useState(false);
-    const [showArchive, setShowArchive] = useState(false);
 
     // On load: rollover past incomplete items, then spawn routine tasks
     useEffect(() => {
@@ -29,22 +27,18 @@ const TasksPage: React.FC = () => {
         spawnRoutineTasks();
     }, [rolloverPastItems, spawnRoutineTasks]);
 
+    // Handle scroll to week... (omitted code remains same, referencing it by block if possible or just leaving it alone? The user wants me to edit. I will effectively replace the component body)
 
-
-    // Handle scroll to week from MonthZoom or WeekNav
+    // ... helper functions for scroll ...
     const scrollToWeek = useCallback((weekKey: string) => {
         const container = document.querySelector('.tasks-main');
         const weekElement = document.querySelector(`[data-week="${weekKey}"]`);
         if (container && weekElement) {
-            const headerOffset = 10; // No header, minimal offset
+            const headerOffset = 10;
             const containerTop = container.getBoundingClientRect().top;
             const elementTop = weekElement.getBoundingClientRect().top;
             const offsetPosition = container.scrollTop + (elementTop - containerTop) - headerOffset;
-
-            container.scrollTo({
-                top: offsetPosition,
-                behavior: 'smooth'
-            });
+            container.scrollTo({ top: offsetPosition, behavior: 'smooth' });
         }
     }, []);
 
@@ -56,17 +50,14 @@ const TasksPage: React.FC = () => {
         }
     }, [location.state, navigate, scrollToWeek]);
 
-    // Track visible week as user scrolls within .tasks-main container
     useEffect(() => {
         const container = document.querySelector('.tasks-main');
         if (!container) return;
 
         const observer = new IntersectionObserver(
             (entries) => {
-                // Find the most visible week element
                 const visibleEntries = entries.filter(e => e.isIntersecting);
                 if (visibleEntries.length > 0) {
-                    // Get the one closest to the top
                     const topEntry = visibleEntries.reduce((a, b) =>
                         a.boundingClientRect.top < b.boundingClientRect.top ? a : b
                     );
@@ -76,17 +67,11 @@ const TasksPage: React.FC = () => {
                     }
                 }
             },
-            {
-                root: container, // Observe within the scroll container
-                threshold: 0.1,
-                rootMargin: '-100px 0px -50% 0px'
-            }
+            { root: container, threshold: 0.1, rootMargin: '-100px 0px -50% 0px' }
         );
 
-        // Observe week section elements
         const weekElements = container.querySelectorAll('.week-section[data-week]');
         weekElements.forEach(el => observer.observe(el));
-
         return () => observer.disconnect();
     }, []);
 
@@ -101,45 +86,24 @@ const TasksPage: React.FC = () => {
         scrollToWeek(getPresentWeek());
     }, [getPresentWeek, scrollToWeek]);
 
-    const handleToolkitToggle = (panel: 'archive' | 'routines') => {
-        if (panel === 'archive') {
-            setShowArchive(!showArchive);
-            setShowRoutineManager(false);
-        } else {
-            setShowRoutineManager(!showRoutineManager);
-            setShowArchive(false);
-        }
+    const handleTogglePanel = (panel: 'archive' | 'routines' | 'ideas') => {
+        setActivePanel(prev => prev === panel ? null : panel);
     };
-
-    const activePanel = showArchive ? 'archive' : showRoutineManager ? 'routines' : null;
 
     return (
         <div className={`tasks-layout theme-default ${activePanel ? 'panel-open' : ''}`}>
-
             <div className="tasks-main">
                 <WeekNav onNavigate={scrollToWeek} currentVisibleWeek={currentVisibleWeek} />
 
-                <TaskList onPresentWeekVisible={handlePresentWeekVisible} />
+                <TaskList
+                    onPresentWeekVisible={handlePresentWeekVisible}
+                    activePanel={activePanel}
+                    onTogglePanel={handleTogglePanel}
+                    onClosePanel={() => setActivePanel(null)}
+                />
 
                 <JumpToToday visible={showJumpToToday} onClick={handleJumpToToday} isAbove={isAboveWeek} />
             </div>
-
-            <SideDrawer
-                isOpen={activePanel !== null}
-                activePanel={activePanel}
-                onToggle={handleToolkitToggle}
-                onClose={() => {
-                    setShowRoutineManager(false);
-                    setShowArchive(false);
-                }}
-            >
-                {activePanel === 'routines' && (
-                    <RoutineManager isOpen={true} onClose={() => { }} />
-                )}
-                {activePanel === 'archive' && (
-                    <ArchivePanel isOpen={true} onClose={() => { }} />
-                )}
-            </SideDrawer>
         </div>
     );
 };

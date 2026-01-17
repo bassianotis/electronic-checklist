@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import type { Item, Routine, WeekKey } from '../types';
+import type { Item, Routine } from '../types';
 import { getWeekKey } from '../utils/timeUtils';
 
 // Default "now" time - January 13, 2026 at noon

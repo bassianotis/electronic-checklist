@@ -104,25 +104,29 @@ function matchesCadence(weekKey: WeekKey, routine: Routine): boolean {
     const weeksDiff = weekDate.diff(anchorDate, 'week');
 
     switch (routine.cadence) {
-        case 'weekly':
+        case 'weekly': {
             return true; // Every week from anchor
+        }
 
-        case 'biweekly':
+        case 'biweekly': {
             return weeksDiff % 2 === 0; // Every other week
+        }
 
-        case 'monthly':
+        case 'monthly': {
             // Same week-of-month as anchor
             const anchorWeekInMonth = getWeekInMonth(anchorDate);
             const currentWeekInMonth = getWeekInMonth(weekDate);
             return currentWeekInMonth === anchorWeekInMonth;
+        }
 
-        case 'annually':
+        case 'annually': {
             // Same month and same week-of-month
             const anchorMonth = anchorDate.month();
             const anchorWIM = getWeekInMonth(anchorDate);
             const currentMonth = weekDate.month();
             const currentWIM = getWeekInMonth(weekDate);
             return currentMonth === anchorMonth && currentWIM === anchorWIM;
+        }
 
         default:
             return false;

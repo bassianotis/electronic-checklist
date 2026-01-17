@@ -1,6 +1,7 @@
 // Core types for the task list prototype
 
 export type WeekKey = string; // e.g., "2026-W05" using Sunday start
+export const IDEAS_WEEK_KEY = 'ideas';
 
 export type ItemStatus = 'incomplete' | 'complete';
 
@@ -20,6 +21,7 @@ export interface Item {
     // Multi-occurrence tasks (e.g., "Water plants" 3x per week)
     targetCount?: number; // how many times to complete (e.g., 3)
     completedCount?: number; // how many times completed so far (e.g., 2)
+    isSpacer?: boolean;
     originalWeek?: WeekKey; // original week if auto-rolled over from past
     notes?: string; // optional notes (max 140 chars)
 }

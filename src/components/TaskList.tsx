@@ -1,3 +1,4 @@
+// Imports updated
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     DndContext,
@@ -17,7 +18,8 @@ import {
 import { TaskCard } from './TaskCard';
 import { InlineTaskEditor } from './InlineTaskEditor';
 import { useTaskStore } from '../store/store';
-import type { WeekKey } from '../types';
+import type { WeekKey, Item } from '../types';
+
 import { compareWeekKeys, addWeeks, getFirstDayOfWeek } from '../utils/timeUtils';
 import dayjs from 'dayjs';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
@@ -29,8 +31,18 @@ import {
     DRAG_ACTIVATION_DISTANCE
 } from '../utils/dragUtils';
 import { getProjectedItems } from '../utils/dragProjection';
+
+// Components
+import { SideDrawer } from './SideDrawer';
+import { IdeasPanel } from './IdeasPanel';
+import { RoutineManager } from './RoutineManager';
+import { ArchivePanel } from './ArchivePanel';
+
 interface TaskListProps {
     onPresentWeekVisible?: (visible: boolean, isAbove?: boolean) => void;
+    activePanel: 'archive' | 'routines' | 'ideas' | null;
+    onTogglePanel: (panel: 'archive' | 'routines' | 'ideas') => void;
+    onClosePanel: () => void;
 }
 
 // Get section label for a week
@@ -68,14 +80,19 @@ function getSectionLabel(week: WeekKey, presentWeek: WeekKey): { label: string; 
     };
 }
 
-export const TaskList: React.FC<TaskListProps> = ({ onPresentWeekVisible }) => {
+export const TaskList: React.FC<TaskListProps> = ({
+    onPresentWeekVisible,
+    activePanel,
+    onTogglePanel,
+    onClosePanel
+}) => {
     const {
         getVisibleItems,
+        getIdeasItems,
         getPresentWeek,
         currentTime,
         routines,
-        reorderItem,
-        moveToWeek // Need to expose or reuse this for onDragOver
+        reorderItem
     } = useTaskStore();
 
     const [activeId, setActiveId] = useState<string | null>(null);
@@ -88,13 +105,17 @@ export const TaskList: React.FC<TaskListProps> = ({ onPresentWeekVisible }) => {
     const [hoveringAt, setHoveringAt] = useState<{ week: WeekKey; orderIndex: number } | null>(null);
 
     // Track original position of dragged item to keep a spacer
-    const [dragOrigin, setDragOrigin] = useState<{ week: WeekKey; orderIndex: number; item: any } | null>(null);
+    const [dragOrigin, setDragOrigin] = useState<{ week: WeekKey; orderIndex: number; item: Item } | null>(null);
 
     const visibleItems = getVisibleItems();
+    const ideasItems = getIdeasItems();
+    // Combine for drag logic lookups
+    const allDragItems = [...visibleItems, ...ideasItems];
+
     const presentWeek = getPresentWeek();
     const routineMap = new Map(routines.map(r => [r.id, r]));
 
-    // Group items by week
+    // Group items by week (only visible timeline items)
     const itemsByWeek = visibleItems.reduce((acc, item) => {
         if (!acc[item.week]) acc[item.week] = [];
         acc[item.week].push(item);
@@ -103,12 +124,8 @@ export const TaskList: React.FC<TaskListProps> = ({ onPresentWeekVisible }) => {
 
     const sortedWeeks = Object.keys(itemsByWeek).sort(compareWeekKeys);
 
-    // Ensure the weeks we need to render are stable even if empty during drag
-    const [weeks, setWeeks] = useState(sortedWeeks);
-
-    // Sync local weeks with store data, but we might want to be careful during drag
+    // Only sync logic if needed, currently unused
     useEffect(() => {
-        // Simple sync for now - refined drag logic doesn't strictly require local week state if updates are fast
     }, [sortedWeeks]);
 
     const presentWeekItems = itemsByWeek[presentWeek] || [];
@@ -154,7 +171,7 @@ export const TaskList: React.FC<TaskListProps> = ({ onPresentWeekVisible }) => {
         const id = event.active.id as string;
         setActiveId(id);
 
-        const item = visibleItems.find(i => i.id === id);
+        const item = allDragItems.find(i => i.id === id);
         if (item) {
             setDragOrigin({
                 week: item.week,
@@ -168,40 +185,24 @@ export const TaskList: React.FC<TaskListProps> = ({ onPresentWeekVisible }) => {
         const { active, over } = event;
         if (!over) return;
 
-        // Helper to resolve real item ID from potential spacer ID
-        // (now imported from utils)
-
         const activeId = resolveId(active.id as string);
         const rawOverId = over.id as string;
         const overId = resolveId(rawOverId);
 
-        // Find the "week" container of the active item and the over item
-        // Note: active.data.current?.sortable?.containerId could be useful but we have week in item
-        const activeItem = visibleItems.find(i => i.id === activeId);
+        const activeItem = allDragItems.find(i => i.id === activeId);
 
-        // If over a "container" (empty week placeholder), overId is the week key
         let overWeek: WeekKey | undefined;
         let overItem: typeof activeItem | undefined;
 
-        // Check if overId is a known week key
-        // We need a stable way to know if we are over a week container or an item
-        // Best way: check if overId matches a week regex or is in our week list
-        // OR: check if it's an item
-
-        const maybeItem = visibleItems.find(i => i.id === overId);
+        const maybeItem = allDragItems.find(i => i.id === overId);
         if (maybeItem) {
             overItem = maybeItem;
-            // Check if we are hovering over the spacer of the currently dragged item
-            // If so, the "PHYSICAL" week is the origin week, irrespective of where the item "IS" in the store.
             if (dragOrigin && overId === dragOrigin.item.id && isSpacerId(rawOverId)) {
                 overWeek = dragOrigin.week;
             } else {
                 overWeek = maybeItem.week;
             }
         } else {
-            // Assume it's a container ID which we will set to the week key
-            // Start by assuming rawOverId is the week key (container drop)
-            // But if it was a spacer ID that failed resolution, we shouldn't treat it as a week key
             if (!isSpacerId(rawOverId)) {
                 overWeek = rawOverId as WeekKey;
             }
@@ -210,15 +211,9 @@ export const TaskList: React.FC<TaskListProps> = ({ onPresentWeekVisible }) => {
         if (!activeItem || !overWeek) return;
 
         if (activeItem.week !== overWeek) {
-            // Moved to a different week!
-            // We need to trigger a move in the store to update the UI
-
-            // Find appropriate index in new week
             let newIndex = 0;
             if (overItem) {
-                const weekItems = visibleItems.filter(i => i.week === overWeek).sort((a, b) => a.orderIndex - b.orderIndex);
-
-                // Use refined physics calculation from check
+                const weekItems = allDragItems.filter(i => i.week === overWeek).sort((a, b) => a.orderIndex - b.orderIndex);
                 newIndex = calculateInsertionIndex({
                     active,
                     over,
@@ -226,7 +221,7 @@ export const TaskList: React.FC<TaskListProps> = ({ onPresentWeekVisible }) => {
                     weekItems
                 });
             } else {
-                newIndex = visibleItems.filter(i => i.week === overWeek).length;
+                newIndex = allDragItems.filter(i => i.week === overWeek).length;
             }
 
             reorderItem(activeId, newIndex, overWeek);
@@ -240,32 +235,20 @@ export const TaskList: React.FC<TaskListProps> = ({ onPresentWeekVisible }) => {
 
         if (!over) return;
 
-        // Helper to resolve real item ID from potential spacer ID
-        // (now imported)
-
         const activeId = resolveId(active.id as string);
         const rawOverId = over.id as string;
         const overId = resolveId(rawOverId);
 
-        const activeItem = visibleItems.find(i => i.id === activeId);
+        const activeItem = allDragItems.find(i => i.id === activeId);
 
         // Determine target
-        let overItem = visibleItems.find(i => i.id === overId);
+        const overItem = allDragItems.find(i => i.id === overId);
         let targetWeek: WeekKey;
 
         if (overItem) {
             targetWeek = overItem.week;
         } else {
-            // Dropped on a container
-            // Start by assuming rawOverId is the week key (container drop)
-            // But if it was a spacer ID that failed resolution, we shouldn't treat it as a week key
             if (isSpacerId(rawOverId)) {
-                // Should have found item via resolveId, but if not, something is wrong
-                // or it's a spacer for an item that is no longer visible?
-                // Fallback to activeItem's week or return?? 
-                // Actually if overItem is found above, we are good.
-                // If not found, and it IS a spacer ID, it means we dropped on a spacer for a hidden item?
-                // Safe bet: return
                 return;
             }
             targetWeek = rawOverId as WeekKey;
@@ -273,10 +256,7 @@ export const TaskList: React.FC<TaskListProps> = ({ onPresentWeekVisible }) => {
 
         if (!activeItem) return;
 
-        // Final reorder to ensure exact position
-        // If we did our job in dragOver, it might already be close, but dragEnd confirms it.
-
-        const weekItems = visibleItems
+        const weekItems = allDragItems
             .filter(i => i.week === targetWeek)
             .sort((a, b) => a.orderIndex - b.orderIndex);
 
@@ -284,8 +264,6 @@ export const TaskList: React.FC<TaskListProps> = ({ onPresentWeekVisible }) => {
 
         if (overItem) {
             const overIndex = weekItems.findIndex(i => i.id === overItem!.id);
-            // logic to decide if before or after... dnd-kit handles this usually via index
-            // relying on overIndex is usually safe
             newIndex = overIndex >= 0 ? overIndex : newIndex;
         }
 
@@ -296,13 +274,11 @@ export const TaskList: React.FC<TaskListProps> = ({ onPresentWeekVisible }) => {
         setAnnouncement(`Moved ${activeItem.title} to ${targetWeek}`);
     };
 
-    // Prepare active item for overlay
-    const activeItemData = activeId ? visibleItems.find(i => i.id === activeId) : null;
+    const activeItemData = activeId ? allDragItems.find(i => i.id === activeId) : null;
     const activeRoutine = activeItemData?.routineId ? routineMap.get(activeItemData.routineId) : undefined;
 
     const monthsShown = new Set<string>();
 
-    // Animation refs
     const [parentConf] = useAutoAnimate();
 
     const animateRef = useCallback((node: HTMLDivElement | null) => {
@@ -316,10 +292,7 @@ export const TaskList: React.FC<TaskListProps> = ({ onPresentWeekVisible }) => {
                     ];
                 }
                 if (action === 'remove') {
-                    // Suppress animation if it's the item currently being dragged
-                    // OR if it's a spacer (though spacest shouldn't exist now)
                     const isDraggedItem = activeId && el.getAttribute('data-item-id') === activeId;
-
                     if (el.hasAttribute('data-is-spacer') || isDraggedItem) {
                         keyframes = [
                             { opacity: 0 },
@@ -332,7 +305,7 @@ export const TaskList: React.FC<TaskListProps> = ({ onPresentWeekVisible }) => {
                         ];
                     }
                 }
-                if (action === 'remain') {
+                if (action === 'remain' && oldCoords && newCoords) {
                     const deltaX = oldCoords.left - newCoords.left;
                     const deltaY = oldCoords.top - newCoords.top;
                     const start = { transform: `translate(${deltaX}px, ${deltaY}px)` };
@@ -363,9 +336,8 @@ export const TaskList: React.FC<TaskListProps> = ({ onPresentWeekVisible }) => {
                         const isCurrentWeek = week === presentWeek;
                         const sectionInfo = getSectionLabel(week, presentWeek);
 
-                        // ... Header logic same as before ... 
                         let showHeader = false;
-                        let headerLabel = sectionInfo.label;
+                        const headerLabel = sectionInfo.label;
                         if (sectionInfo.isNewMonth) {
                             const monthKey = dayjs(getFirstDayOfWeek(week)).format('YYYY-MM');
                             if (!monthsShown.has(monthKey)) {
@@ -415,18 +387,9 @@ export const TaskList: React.FC<TaskListProps> = ({ onPresentWeekVisible }) => {
                                 >
                                     <div className="week-items-container" ref={animateRef}>
                                         {(() => {
-                                            // Project items with potential spacer
-                                            // We use a helper function here instead of a hook because we are inside a map
-                                            // and extracting a full Week component is a larger refactor.
-                                            // Ideally we'd move this to a WeekColumn component.
-
-                                            // Helper inline for now or imported if I update the file.
-                                            // Let's use the logic I know works, cleaned up.
                                             const renderItems = getProjectedItems(weekItems, dragOrigin, week);
-
                                             return renderItems.map((item) => (
                                                 <React.Fragment key={item.id ?? 'spacer-fragment'}>
-                                                    {/* Insertion Point Logic only for real items */}
                                                     {!item.isSpacer && editingAt?.week === week && editingAt?.orderIndex === item.orderIndex ? (
                                                         <InlineTaskEditor
                                                             week={week}
@@ -455,7 +418,7 @@ export const TaskList: React.FC<TaskListProps> = ({ onPresentWeekVisible }) => {
                                                 </React.Fragment>
                                             ));
                                         })()}
-                                        {/* Trailing Insertion Point */}
+
                                         {editingAt?.week === week && editingAt?.orderIndex === weekItems.length ? (
                                             <InlineTaskEditor
                                                 week={week}
@@ -479,6 +442,23 @@ export const TaskList: React.FC<TaskListProps> = ({ onPresentWeekVisible }) => {
                         );
                     })}
                 </div>
+
+                <SideDrawer
+                    isOpen={activePanel !== null}
+                    activePanel={activePanel}
+                    onToggle={onTogglePanel}
+                    onClose={onClosePanel}
+                >
+                    {activePanel === 'routines' && (
+                        <RoutineManager isOpen={true} onClose={() => { }} />
+                    )}
+                    {activePanel === 'archive' && (
+                        <ArchivePanel isOpen={true} onClose={() => { }} />
+                    )}
+                    {activePanel === 'ideas' && (
+                        <IdeasPanel isOpen={true} onClose={onClosePanel} />
+                    )}
+                </SideDrawer>
 
                 <DragOverlay dropAnimation={null}>
                     {activeItemData ? (

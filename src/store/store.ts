@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Item, Routine, WeekKey } from '../types';
-import { generateDummyData, DEFAULT_NOW } from '../data/dummyData';
+import { IDEAS_WEEK_KEY } from '../types';
+import { DEFAULT_NOW, generateDummyData } from '../data/dummyData';
 import {
     getWeekKey,
     compareWeekKeys
@@ -12,6 +13,7 @@ import {
     updateRoutineTasks,
     removeOutdatedRoutineTasks
 } from '../utils/routineSpawner';
+import { executeRolloverLogic } from '../utils/rolloverUtils';
 import dayjs from 'dayjs';
 
 interface TaskStore {
@@ -30,9 +32,10 @@ interface TaskStore {
     reorderItem: (id: string, newOrderIndex: number, newWeek?: WeekKey) => void;
     moveToWeek: (id: string, week: WeekKey) => void;
     addItem: (title: string, week: WeekKey, orderIndex: number, options?: { minutesGoal?: number; targetCount?: number; dueDateISO?: string }) => string;
-    updateItem: (id: string, updates: { title?: string; minutesGoal?: number; targetCount?: number; dueDateISO?: string }) => void;
+    updateItem: (id: string, updates: { title?: string; minutesGoal?: number; targetCount?: number; dueDateISO?: string; notes?: string }) => void;
     archiveItem: (id: string) => void;
     unarchiveItem: (id: string) => void;
+    deleteItem: (id: string) => void;
     deleteRoutine: (id: string, removeRelatedTasks: boolean) => void;
     addRoutine: (routine: Omit<Routine, 'id'>) => string;
     updateRoutine: (id: string, updates: Partial<Routine>) => void;
@@ -47,10 +50,13 @@ interface TaskStore {
     // Computed helpers
     getPresentWeek: () => WeekKey;
     getVisibleItems: () => Item[];
+    getIdeasItems: () => Item[];
     getArchivedItems: () => Item[];
 }
 
-const initialData = generateDummyData(DEFAULT_NOW);
+import { getInitialData } from '../utils/initialization';
+
+const initialData = getInitialData();
 
 export const useTaskStore = create<TaskStore>()(
     persist(
@@ -129,10 +135,13 @@ export const useTaskStore = create<TaskStore>()(
                         if (item.id !== id) return item;
 
                         const newMinutes = (item.minutes ?? 0) + minutes;
-                        const goal = item.minutesGoal ?? 0;
+                        const minutesGoal = item.minutesGoal ?? 0;
 
-                        // Auto-complete if goal is met
-                        if (goal > 0 && newMinutes >= goal && item.status === 'incomplete') {
+                        // Check combined goals
+                        const minutesMet = minutesGoal === 0 || newMinutes >= minutesGoal;
+                        const countMet = !item.targetCount || (item.completedCount ?? 0) >= item.targetCount;
+
+                        if (minutesMet && countMet && item.status === 'incomplete') {
                             return {
                                 ...item,
                                 minutes: newMinutes,
@@ -156,8 +165,12 @@ export const useTaskStore = create<TaskStore>()(
                         const targetCount = item.targetCount ?? 1;
                         const newCount = currentCount + 1;
 
-                        // If we've completed all occurrences, mark as complete
-                        if (newCount >= targetCount) {
+                        // Check combined goals
+                        const countMet = newCount >= targetCount;
+                        const minutesMet = !item.minutesGoal || (item.minutes ?? 0) >= item.minutesGoal;
+
+                        // If we've met ALL goals, mark as complete
+                        if (countMet && minutesMet) {
                             return {
                                 ...item,
                                 completedCount: newCount,
@@ -302,9 +315,24 @@ export const useTaskStore = create<TaskStore>()(
                             updated.hasDueDate = !!updates.dueDateISO;
                         }
                         if (updates.notes !== undefined) {
-                            // Enforce 140 char limit and trim empty to undefined
                             updated.notes = updates.notes.slice(0, 140) || undefined;
                         }
+
+                        // Re-evaluate completion status
+                        const minutesMet = !updated.minutesGoal || (updated.minutes ?? 0) >= updated.minutesGoal;
+                        const countMet = !updated.targetCount || (updated.completedCount ?? 0) >= updated.targetCount;
+                        const requirementsMet = minutesMet && countMet;
+
+                        if (updated.status === 'complete' && !requirementsMet) {
+                            updated.status = 'incomplete';
+                            updated.completedAt = undefined;
+                        }
+
+                        // Optional: Auto-complete if now met? 
+                        // User prompt implies only "uncheck", but usually if I lower the goal I expect it to complete?
+                        // "In the scenario that I meet the time goal... the box should be unchecked"
+                        // Safer to only auto-complete if implicit action (like increment), but for edit, if I change 30m -> 15m and I have 20m, it SHOULD complete?
+                        // I will stick to "Uncomplete if not met" for now to be safe, unless user explicitly dragged.
 
                         return updated;
                     }),
@@ -407,6 +435,11 @@ export const useTaskStore = create<TaskStore>()(
                     const presentWeek = getWeekKey(state.currentTime);
 
                     const updatedItems = state.items.map(item => {
+                        // Skip ideas items (they don't rollover)
+                        if (item.week === IDEAS_WEEK_KEY) {
+                            return item;
+                        }
+
                         // Skip if already in present/future week
                         if (compareWeekKeys(item.week, presentWeek) >= 0) {
                             return item;
@@ -480,6 +513,12 @@ export const useTaskStore = create<TaskStore>()(
                 }));
             },
 
+            deleteItem: (id: string) => {
+                set((state) => ({
+                    items: state.items.filter((item) => item.id !== id),
+                }));
+            },
+
             unarchiveItem: (id: string) => {
                 set((state) => {
                     const item = state.items.find((i) => i.id === id);
@@ -510,7 +549,7 @@ export const useTaskStore = create<TaskStore>()(
                 const { items } = get();
 
                 return items
-                    .filter((item) => !item.archived) // Only show non-archived items
+                    .filter((item) => !item.archived && item.week !== IDEAS_WEEK_KEY) // Only show non-archived items and exclude Ideas
                     .sort((a, b) => {
                         const weekCompare = compareWeekKeys(a.week, b.week);
                         if (weekCompare !== 0) return weekCompare;
@@ -518,6 +557,13 @@ export const useTaskStore = create<TaskStore>()(
                         // Keep items in their position (by orderIndex)
                         return a.orderIndex - b.orderIndex;
                     });
+            },
+
+            getIdeasItems: () => {
+                const { items } = get();
+                return items
+                    .filter((item) => !item.archived && item.week === IDEAS_WEEK_KEY)
+                    .sort((a, b) => a.orderIndex - b.orderIndex);
             },
 
             getArchivedItems: () => {
@@ -545,44 +591,4 @@ export const useTaskStore = create<TaskStore>()(
     )
 );
 
-function executeRolloverLogic(
-    state: { items: Item[]; routines: Routine[]; currentTime: string; allowUncomplete: boolean },
-    newPresentWeek: WeekKey,
-    newTime: string
-): { items: Item[]; currentTime: string } {
-    const oldPresentWeek = getWeekKey(state.currentTime);
 
-    const carryOverItems = state.items
-        .filter((i) => i.week === oldPresentWeek && i.status === 'incomplete')
-        .sort((a, b) => a.orderIndex - b.orderIndex);
-
-    const newWeekItems = state.items
-        .filter((i) => i.week === newPresentWeek && i.status === 'incomplete')
-        .sort((a, b) => a.orderIndex - b.orderIndex);
-
-    const updatedItems = state.items.map((item) => {
-        const carryIndex = carryOverItems.findIndex((c) => c.id === item.id);
-        if (carryIndex !== -1) {
-            return {
-                ...item,
-                week: newPresentWeek,
-                orderIndex: carryIndex,
-            };
-        }
-
-        const newWeekIndex = newWeekItems.findIndex((n) => n.id === item.id);
-        if (newWeekIndex !== -1) {
-            return {
-                ...item,
-                orderIndex: carryOverItems.length + newWeekIndex,
-            };
-        }
-
-        return item;
-    });
-
-    return {
-        items: updatedItems,
-        currentTime: newTime,
-    };
-}

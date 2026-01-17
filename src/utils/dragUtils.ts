@@ -1,5 +1,5 @@
 import type { Active, Over } from '@dnd-kit/core';
-import type { Item, WeekKey } from '../types';
+import type { Item } from '../types';
 
 // --- Constants ---
 
