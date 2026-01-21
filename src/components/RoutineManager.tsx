@@ -25,6 +25,7 @@ interface DraftRoutine {
     startWeekInMonth: number;
     endMonth: number;
     endWeekInMonth: number;
+    notes: string;
 }
 
 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -192,9 +193,14 @@ const SeasonalWeekPicker: React.FC<{
 };
 
 export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen: _isOpen, onClose: _onClose }) => {
-    const { getPresentWeek, routines, deleteRoutine, addRoutine, updateRoutine } = useTaskStore();
+    const { getPresentWeek, routines, items, deleteRoutine, addRoutine, updateRoutine } = useTaskStore();
     const [isEditing, setIsEditing] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState<{ routineId: string; routineName: string } | null>(null);
+    const [notesOverwriteConfirm, setNotesOverwriteConfirm] = useState<{
+        routineId: string;
+        routineData: any;
+        modifiedCount: number;
+    } | null>(null);
 
     const defaultRoutine: DraftRoutine = {
         name: '',
@@ -208,6 +214,7 @@ export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen: _isOpen,
         startWeekInMonth: 1,
         endMonth: 9,
         endWeekInMonth: 4,
+        notes: '',
     };
 
     const [draft, setDraft] = useState<DraftRoutine>(defaultRoutine);
@@ -233,6 +240,7 @@ export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen: _isOpen,
             startWeekInMonth: routine.startWeekInMonth || 1,
             endMonth: routine.endMonth || 9,
             endWeekInMonth: routine.endWeekInMonth || 4,
+            notes: routine.notes || '',
         });
         setIsEditing(true);
     };
@@ -265,9 +273,37 @@ export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen: _isOpen,
             startWeekInMonth: !draft.isYearRound ? draft.startWeekInMonth : undefined,
             endMonth: !draft.isYearRound ? draft.endMonth : undefined,
             endWeekInMonth: !draft.isYearRound ? draft.endWeekInMonth : undefined,
+            notes: draft.notes.trim() || undefined,
         };
 
+        // If editing an existing routine, check if notes changed and if any tasks have modified notes
         if (editingRoutineId) {
+            const existingRoutine = routines.find(r => r.id === editingRoutineId);
+            const notesChanged = (routineData.notes || '') !== (existingRoutine?.notes || '');
+
+            if (notesChanged) {
+                // Count tasks with manually modified notes
+                const relatedTasks = items.filter(item =>
+                    item.routineId === editingRoutineId &&
+                    !item.deletedAt &&
+                    item.status === 'incomplete'
+                );
+                const modifiedCount = relatedTasks.filter(item =>
+                    item.notes !== item.inheritedNotes &&
+                    !(item.notes === undefined && item.inheritedNotes === undefined)
+                ).length;
+
+                if (modifiedCount > 0) {
+                    // Show confirmation dialog
+                    setNotesOverwriteConfirm({
+                        routineId: editingRoutineId,
+                        routineData,
+                        modifiedCount,
+                    });
+                    return;
+                }
+            }
+
             updateRoutine(editingRoutineId, routineData);
         } else {
             addRoutine(routineData as Omit<typeof routineData & { id: string }, 'id'>);
@@ -276,6 +312,20 @@ export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen: _isOpen,
         setIsEditing(false);
         setEditingRoutineId(null);
     };
+
+    const handleNotesOverwriteConfirm = (overwrite: boolean) => {
+        if (!notesOverwriteConfirm) return;
+
+        const { routineId, routineData } = notesOverwriteConfirm;
+
+        // Update routine with overwrite flag
+        updateRoutine(routineId, routineData, overwrite);
+
+        setNotesOverwriteConfirm(null);
+        setIsEditing(false);
+        setEditingRoutineId(null);
+    };
+
 
     const handleBack = () => {
         setIsEditing(false);
@@ -295,11 +345,11 @@ export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen: _isOpen,
                     </div>
 
                     <div className="panel-content">
-                        {routines.length === 0 ? (
+                        {routines.filter(r => !r.deletedAt).length === 0 ? (
                             <div className="panel-empty-state">No routines yet</div>
                         ) : (
                             <div className="routine-list">
-                                {routines.map(routine => (
+                                {routines.filter(r => !r.deletedAt).map(routine => (
                                     <button
                                         key={routine.id}
                                         className={`side-panel-card routine-card ${routine.cadence}`} // Remove task-card, add cadence class for border styling
@@ -356,6 +406,29 @@ export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen: _isOpen,
                                     </button>
                                 </div>
                                 <button className="btn-cancel-link" onClick={() => setDeleteConfirm(null)}>
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Notes Overwrite Confirmation Dialog */}
+                    {notesOverwriteConfirm && (
+                        <div className="delete-confirm-dialog">
+                            <div className="delete-confirm-content">
+                                <h3>Update Notes</h3>
+                                <p className="delete-confirm-subtitle">
+                                    {notesOverwriteConfirm.modifiedCount} task{notesOverwriteConfirm.modifiedCount > 1 ? 's have' : ' has'} custom notes that will be overwritten.
+                                </p>
+                                <div className="delete-confirm-actions notes-overwrite-actions">
+                                    <button className="btn-delete-remove" onClick={() => handleNotesOverwriteConfirm(true)}>
+                                        Overwrite All
+                                    </button>
+                                    <button className="btn-delete-keep" onClick={() => handleNotesOverwriteConfirm(false)}>
+                                        Keep Custom Notes
+                                    </button>
+                                </div>
+                                <button className="btn-cancel-link" onClick={() => setNotesOverwriteConfirm(null)}>
                                     Cancel
                                 </button>
                             </div>
@@ -433,6 +506,20 @@ export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen: _isOpen,
                                 onChange={e => updateDraft({ name: e.target.value })}
                                 placeholder="e.g., Clean kitchen"
                             />
+                        </div>
+
+                        {/* Notes */}
+                        <div className="editor-section">
+                            <label className="editor-label">Notes (optional)</label>
+                            <textarea
+                                className="editor-input editor-textarea"
+                                value={draft.notes}
+                                onChange={e => updateDraft({ notes: e.target.value })}
+                                placeholder="Instructions, tips, or reminders for this routine..."
+                                maxLength={1200}
+                                rows={3}
+                            />
+                            <div className="char-count">{draft.notes.length}/1200</div>
                         </div>
 
                         {/* Cadence */}

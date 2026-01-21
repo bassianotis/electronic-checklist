@@ -1,148 +1,98 @@
-# Task List Prototype
+# Electronic Checklist
 
-A front-end-only prototype demonstrating a task/routine list UX with week-based scheduling, drag-and-drop reordering, and time travel for testing.
+A self-hosted weekly task manager with routines, ideas, and multi-device sync.
 
-## Stack
+## Features
 
-- **React 18** + **TypeScript** + **Vite**
-- **React Router** for navigation
-- **Zustand** for state management with localStorage persistence
-- **dnd-kit** for drag-and-drop reordering
-- **dayjs** for date/time utilities
-- **CSS Variables** for styling (no heavy UI libraries)
+- **Weekly Task Board** – Organize tasks by week with drag-and-drop reordering
+- **Routines** – Create recurring tasks (weekly, biweekly, monthly, annually)
+- **Ideas Bucket** – Capture ideas without scheduling them
+- **Archive** – Keep your board clean while retaining access to completed tasks
+- **Rich Notes** – Markdown-style notes with lists and line breaks
+- **Multi-Device Sync** – Real-time sync across browsers and devices
+- **Authentication** – Password protection with invite codes for registration
+
+## Tech Stack
+
+- **Frontend**: React 19, TypeScript, Vite
+- **Backend**: Express.js, Node.js
+- **Database**: SQLite
+- **Drag & Drop**: dnd-kit
 
 ## Getting Started
 
+### Prerequisites
+
+- Node.js 20+
+
+### Development
+
+Install dependencies:
+
 ```bash
-# Install dependencies
 npm install
+```
 
-# Start development server
+Start the frontend development server:
+
+```bash
 npm run dev
-
-# Run tests
-npm test
-
-# Build for production
-npm run build
 ```
 
-Open http://localhost:5173 in your browser.
+In a separate terminal, start the backend:
 
-## Routes
-
-| Route | Description |
-|-------|-------------|
-| `/tasks` | Main task list (default) |
-| `/month` | Month zoom overlay for navigation |
-| `/completed` | All completed items (historical view) |
-
-## Using the DevPanel
-
-A **🛠 Dev** button in the bottom-left corner opens the Developer Panel:
-
-### Time Travel
-- **+1/+3/+7 days**: Advance simulated time forward
-- **-1 day**: Go back in time
-
-### Sunday Rollover
-Click **Simulate Rollover** to execute the weekly rollover logic:
-- Advances time to next Sunday midnight
-- Incomplete items from the old "present week" carry into the new week
-- Pre-scheduled items for the new week appear after carried-over items
-
-### Uncomplete Toggle
-Enable **"Allow uncomplete (within 7 days)"** to let you uncheck completed items. When unchecked, items move to the bottom of the present week's incomplete list.
-
-### Reseed Data
-Click **Reseed Dummy Data** to regenerate all items based on the current simulated time.
-
-## Manual Testing Checklist
-
-### ✅ Complete an Item
-1. Click an orange checkbox on an incomplete item
-2. Watch it animate up to the completed cluster
-3. Use DevPanel to advance time 8+ days
-4. Verify item disappears from main list (still visible in `/completed`)
-
-### ✅ Start a Blue Item
-1. Find a blue (future week) item with a "Start" button
-2. Click Start
-3. Watch it move to present week bottom, tint changes to yellow
-4. Start button is replaced by progress controls (+15, +30)
-
-### ✅ Drag Reorder
-1. Drag an incomplete item by its grip handle
-2. Drop it in a different position (even across week boundaries)
-3. Verify order updates and tint changes if week changed
-
-### ✅ Weekly Rollover
-1. Note which items are in the "present week" (yellow tint)
-2. Click **Simulate Rollover** in DevPanel
-3. Verify incomplete items carried over to new present week
-4. New week's pre-scheduled items appear after carried-over items
-
-### ✅ Month Zoom Navigation
-1. Click the calendar icon in the header
-2. Tap a month in the grid
-3. Verify list scrolls to that month's first week
-
-### ✅ All Completed View
-1. Click the checklist icon in the header
-2. Verify all completed items are shown (including those >7 days old)
-3. Items are in reverse chronological order with timestamps
-
-### ✅ Jump to Today
-1. Scroll far away from the present week
-2. FAB appears: "↑ Today"
-3. Click it to scroll back to present week
-
-## Key Concepts
-
-### Week Keys
-Weeks are identified by `YYYY-Www` format (e.g., `2026-W05`), calculated with **Sunday as the start** of each week.
-
-### Item Tints
-- **Yellow** (`--wk-present`): Present week items
-- **Blue** (`--wk-future`): Future week items  
-- **Gray** (`--wk-past`): Past week completed items still within 7-day visibility
-
-### Status Colors
-- **Orange** (`--status-pending`): Incomplete items
-- **Green** (`--status-complete`): Completed items
-
-### Visibility Rules
-- Incomplete items are always visible
-- Completed items are visible for 7 days after completion in main list
-- All completed items (including >7 days) are visible in `/completed`
-
-## Project Structure
-
-```
-src/
-├── components/
-│   ├── TaskCard.tsx      # Individual task card with all states
-│   ├── TaskList.tsx      # Main list with drag-and-drop
-│   ├── MonthZoom.tsx     # Month navigation overlay
-│   ├── CompletedList.tsx # Historical completed view
-│   ├── JumpToToday.tsx   # FAB for quick navigation
-│   └── DevPanel.tsx      # Time travel controls
-├── data/
-│   └── dummyData.ts      # Dummy data generator
-├── store/
-│   └── store.ts          # Zustand store with all actions
-├── utils/
-│   ├── timeUtils.ts      # Week key and date helpers
-│   └── timeUtils.test.ts # Unit tests
-├── types.ts              # TypeScript interfaces
-├── App.tsx               # Routes and layout
-├── main.tsx              # Entry point
-└── index.css             # All styles with CSS variables
+```bash
+npm run server
 ```
 
-## Accessibility
+Open http://localhost:5173 and register with the default invite code.
 
-- Keyboard navigation with visible focus styles
-- Tab/Space for checkbox toggling
-- Up/Down arrow buttons for keyboard reordering (alternative to drag)
-- `aria-live` announcements for reorder operations
+## Docker Deployment
+
+Build and run with Docker Compose:
+
+```bash
+docker-compose up -d
+```
+
+Access the app at http://localhost:4000
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `4000` | Host port (maps to container port 3000) |
+| `JWT_SECRET` | ⚠️ Required | Strong secret for session tokens |
+| `REGISTRATION_CODE` | ⚠️ Required | Invite code for new user registration |
+| `COOKIE_SECURE` | `false` | Set to `true` if hosting with HTTPS |
+| `TZ` | `UTC` | Timezone for the server |
+
+## Security & Self-Hosting
+
+For production deployment, you **must** configure these environment variables:
+
+### JWT_SECRET
+Generate a strong random secret:
+```bash
+openssl rand -base64 32
+```
+
+### REGISTRATION_CODE
+Set a private invite code that users need to register:
+```bash
+REGISTRATION_CODE=your-secret-invite-code
+```
+
+### COOKIE_SECURE
+Set to `true` when hosting with HTTPS:
+```bash
+COOKIE_SECURE=true
+```
+
+## Persistent Data
+
+Mount a volume to `/app/data` to persist the SQLite database across container restarts. This is configured by default in `docker-compose.yml`.
+
+## License
+
+GNU General Public License v3.0

@@ -2,7 +2,11 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Item, Routine, WeekKey, AppState } from '../types';
 import { IDEAS_WEEK_KEY } from '../types';
-import { DEFAULT_NOW, generateDummyData } from '../data/dummyData';
+// Default "now" time - January 13, 2026 at noon (Maintenance of original dev time)
+const DEFAULT_NOW = '2026-01-13T12:00:00.000Z';
+
+console.log('Store initializing with DEFAULT_NOW:', DEFAULT_NOW);
+
 import {
     getWeekKey,
     compareWeekKeys
@@ -38,7 +42,7 @@ interface TaskStore extends AppState {
     deleteItem: (id: string) => void;
     deleteRoutine: (id: string, removeRelatedTasks: boolean) => void;
     addRoutine: (routine: Omit<Routine, 'id'>) => string;
-    updateRoutine: (id: string, updates: Partial<Routine>) => void;
+    updateRoutine: (id: string, updates: Partial<Routine>, overwriteModifiedNotes?: boolean) => void;
     spawnRoutineTasks: () => void;
     rolloverPastItems: () => void;
     executeRollover: () => void;
@@ -157,11 +161,26 @@ export const useTaskStore = create<TaskStore>()(
                     }
 
                     if (response.data) {
+                        const serverVersion = response.version || 0;
+
+                        // If server version is 1, it was deliberately reset/cleared
+                        // Don't merge - just replace entirely
+                        if (serverVersion === 1) {
+                            set({
+                                items: response.data.items || [],
+                                routines: response.data.routines || [],
+                                dataVersion: 1,
+                                syncStatus: 'idle',
+                                lastSyncTime: Date.now()
+                            });
+                            return;
+                        }
+
                         const currentState = get();
                         const merged = mergeState(currentState, response.data);
                         set({
                             ...merged,
-                            dataVersion: response.version || currentState.dataVersion,
+                            dataVersion: serverVersion || currentState.dataVersion,
                             syncStatus: 'idle',
                             lastSyncTime: Date.now()
                         });
@@ -175,7 +194,14 @@ export const useTaskStore = create<TaskStore>()(
             },
 
             completeItem: (id: string) => {
-                const { currentTime, triggerSync } = get();
+                const { currentTime, triggerSync, items } = get();
+                const item = items.find(i => i.id === id);
+
+                // Prevent completing ideas
+                if (item?.week === IDEAS_WEEK_KEY) {
+                    return;
+                }
+
                 const nowTs = Date.now();
                 set((state) => ({
                     items: state.items.map((item) =>
@@ -440,7 +466,7 @@ export const useTaskStore = create<TaskStore>()(
                             updated.hasDueDate = !!updates.dueDateISO;
                         }
                         if (updates.notes !== undefined) {
-                            updated.notes = updates.notes.slice(0, 140) || undefined;
+                            updated.notes = updates.notes.slice(0, 1200) || undefined;
                         }
 
                         const minutesMet = !updated.minutesGoal || (updated.minutes ?? 0) >= updated.minutesGoal;
@@ -513,7 +539,7 @@ export const useTaskStore = create<TaskStore>()(
                 return id;
             },
 
-            updateRoutine: (id: string, updates: Partial<Routine>) => {
+            updateRoutine: (id: string, updates: Partial<Routine>, overwriteModifiedNotes?: boolean) => {
                 const { triggerSync } = get();
                 const nowTs = Date.now();
                 set((state) => {
@@ -525,7 +551,25 @@ export const useTaskStore = create<TaskStore>()(
                     newRoutines[routineIndex] = updatedRoutine;
 
                     const itemsAfterRemoval = removeOutdatedRoutineTasks(updatedRoutine, state.items);
-                    const updatedItems = updateRoutineTasks(updatedRoutine, itemsAfterRemoval);
+
+                    // Handle note updates with overwrite option
+                    let updatedItems = updateRoutineTasks(updatedRoutine, itemsAfterRemoval);
+
+                    // If overwriteModifiedNotes is true, force update notes on all incomplete tasks
+                    if (overwriteModifiedNotes && updates.notes !== undefined) {
+                        updatedItems = updatedItems.map(item => {
+                            if (item.routineId !== id) return item;
+                            if (item.status !== 'incomplete') return item;
+                            if (item.deletedAt) return item;
+                            return {
+                                ...item,
+                                notes: updates.notes,
+                                inheritedNotes: updates.notes,
+                                updatedAt: nowTs,
+                            };
+                        });
+                    }
+
                     const visibleWeeks = getVisibleWeeks(state.currentTime);
                     const newTasks = spawnTasksForRoutine(updatedRoutine, visibleWeeks, updatedItems);
                     const newTasksStamped = newTasks.map(t => ({ ...t, updatedAt: nowTs }));
@@ -613,11 +657,10 @@ export const useTaskStore = create<TaskStore>()(
             },
 
             resetData: () => {
-                const { currentTime } = get();
-                const newData = generateDummyData(currentTime);
+                // Reset to empty state
                 set({
-                    items: newData.items,
-                    routines: newData.routines,
+                    items: [],
+                    routines: [],
                     dataVersion: 1,
                 });
                 const { triggerSync } = get();

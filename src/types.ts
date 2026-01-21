@@ -24,6 +24,7 @@ export interface Item {
     isSpacer?: boolean;
     originalWeek?: WeekKey; // original week if auto-rolled over from past
     notes?: string; // optional notes (max 140 chars)
+    inheritedNotes?: string; // routine notes at spawn time (for comparison)
     updatedAt?: number; // unix timestamp
     deletedAt?: number; // unix timestamp for soft delete
 }

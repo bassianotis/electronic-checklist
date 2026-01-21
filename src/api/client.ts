@@ -85,5 +85,10 @@ export const api = {
                 'If-Match': `"${baseVersion}"`
             },
             body: JSON.stringify(data)
+        }),
+
+    clearData: () =>
+        request<{ success: boolean; newVersion: number }>('/data', {
+            method: 'DELETE'
         })
 };

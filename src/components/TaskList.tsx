@@ -16,6 +16,7 @@ import {
 import { TaskCard } from './TaskCard';
 import { useTaskStore } from '../store/store';
 import type { WeekKey, Item } from '../types';
+import { IDEAS_WEEK_KEY } from '../types';
 
 import { compareWeekKeys, addWeeks, getFirstDayOfWeek } from '../utils/timeUtils';
 import dayjs from 'dayjs';
@@ -268,6 +269,11 @@ export const TaskList: React.FC<TaskListProps> = ({
         }
 
         if (!activeItem) return;
+
+        // Prevent dragging completed items to Ideas
+        if (targetWeek === IDEAS_WEEK_KEY && activeItem.status === 'complete') {
+            return;
+        }
 
         const weekItems = allDragItems
             .filter(i => i.week === targetWeek)

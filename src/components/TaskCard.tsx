@@ -5,10 +5,12 @@ import type { Item, Routine, WeekKey } from '../types';
 import {
     relativeLabel,
     formatDate,
+    formatDynamicDueDate,
     isFutureWeek
 } from '../utils/timeUtils';
 import { useTaskStore } from '../store/store';
 import dayjs from 'dayjs';
+import { RichText } from './RichText';
 
 
 
@@ -150,11 +152,9 @@ export const TaskCard: React.FC<TaskCardProps> = ({
         scheduleChipClass = 'future';
     }
 
-    // Due date logic (keep existing)
+    // Due date logic
     const hasDueDate = item.hasDueDate && item.dueDateISO;
-    const isDueDatePast = hasDueDate && dayjs(item.dueDateISO).isBefore(dayjs(currentTime));
-    const isDueDateSoon = hasDueDate && !isDueDatePast &&
-        dayjs(item.dueDateISO).diff(dayjs(currentTime), 'day') <= 3;
+    const isDueDatePast = hasDueDate && dayjs(item.dueDateISO).isBefore(dayjs(currentTime).startOf('day'));
 
     // Progress logic
     const hasTimeProgress = item.minutesGoal !== undefined && item.minutesGoal > 0;
@@ -176,9 +176,15 @@ export const TaskCard: React.FC<TaskCardProps> = ({
         }
     };
 
+    const [isNoteExpanded, setIsNoteExpanded] = useState(false);
+
     // Edit mode handlers
     const handleCardClick = (_e: React.MouseEvent) => {
-        if (isArchived) return; // No editing in archive
+        if (isArchived) {
+            // In archive, clicking toggles note expansion
+            setIsNoteExpanded(!isNoteExpanded);
+            return;
+        }
         if (isEditing) return;
 
         setIsEditing(true);
@@ -283,14 +289,26 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                             onChange={(e) => setEditTitle(e.target.value)}
                             onKeyDown={handleEditKeyDown}
                         />
-                        <input
-                            type="text"
+                        <textarea
                             className="editor-notes-input"
-                            placeholder="Add notes (140 chars max)"
-                            maxLength={140}
+                            placeholder="Add notes (1200 chars max)"
+                            maxLength={1200}
+                            rows={Math.max(1, editNotes.split('\n').length)}
                             value={editNotes}
                             onChange={(e) => setEditNotes(e.target.value)}
-                            onKeyDown={handleEditKeyDown}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    if (e.shiftKey) {
+                                        // Allow default behavior (newline)
+                                        return;
+                                    }
+                                    // Save on Enter without Shift
+                                    e.preventDefault();
+                                    handleEditSave();
+                                } else if (e.key === 'Escape') {
+                                    handleEditCancel();
+                                }
+                            }}
                         />
                         <div className="inline-editor-options">
                             <div className="editor-option">
@@ -358,7 +376,9 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                             {item.title}
                         </div>
                         {item.notes && (
-                            <div className="task-notes">{item.notes}</div>
+                            <div className="task-notes">
+                                <RichText content={item.notes} truncate={!isEditing && !isNoteExpanded} />
+                            </div>
                         )}
 
                         <div className="task-meta">
@@ -382,8 +402,8 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                             )}
 
                             {hasDueDate && (
-                                <span className={`chip due-date ${!isDueDatePast && !isDueDateSoon ? 'future' : ''}`}>
-                                    Due {formatDate(item.dueDateISO!, 'MMM D')}
+                                <span className={`chip due-date ${!isDueDatePast ? 'future' : ''}`}>
+                                    Due {formatDynamicDueDate(item.dueDateISO!, presentWeek, currentTime)}
                                 </span>
                             )}
 

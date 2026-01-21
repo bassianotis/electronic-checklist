@@ -19,6 +19,11 @@ const LoginSchema = z.object({
     password: z.string()
 });
 
+// --- System Routes ---
+router.get('/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // --- Auth Routes ---
 
 router.post('/auth/register', rateLimit(60000, 5), async (req: AuthenticatedRequest, res: Response) => {
@@ -189,6 +194,42 @@ router.post('/data', requireAuth, (req: AuthenticatedRequest, res: Response) => 
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Database error' });
+    }
+});
+
+// --- Clear Data (Full Reset) ---
+router.delete('/data', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.user!.id;
+
+    try {
+        // Reset to empty state with version 1
+        const emptyState = {
+            items: [],
+            routines: [],
+            currentTime: new Date().toISOString(),
+            allowUncomplete: true,
+            userTimezone: 'America/New_York',
+            lastRolledWeek: null,
+            dataVersion: 1
+        };
+
+        const jsonStr = JSON.stringify(emptyState);
+
+        // Upsert: insert or update
+        const existing = db.prepare('SELECT user_id FROM state WHERE user_id = ?').get(userId);
+        if (existing) {
+            db.prepare('UPDATE state SET data_json = ?, version = 1, updated_at = unixepoch() WHERE user_id = ?')
+                .run(jsonStr, userId);
+        } else {
+            db.prepare('INSERT INTO state (user_id, data_json, version, updated_at) VALUES (?, ?, 1, unixepoch())')
+                .run(userId, jsonStr);
+        }
+
+        res.set('ETag', '"1"');
+        res.status(200).json({ success: true, newVersion: 1 });
+    } catch (err: any) {
+        console.error('Clear data error:', err);
+        res.status(500).json({ error: 'Database error', details: err?.message });
     }
 });
 

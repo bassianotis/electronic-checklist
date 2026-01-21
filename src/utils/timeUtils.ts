@@ -142,6 +142,41 @@ export function formatDate(date: Date | string, format: string = 'MMM D, YYYY'):
 }
 
 /**
+ * Format due date dynamically:
+ * - If date is in present week: Show Day Name (e.g., "Monday")
+ * - Otherwise: Show Date (e.g., "Jan 19")
+ */
+export function formatDynamicDueDate(date: string, presentWeekKey: WeekKey, currentTime?: string): string {
+    const targetDate = dayjs(date).startOf('day');
+    const now = dayjs(currentTime).startOf('day');
+
+    // Check for Yesterday / Today / Tomorrow first
+    const diffDays = targetDate.diff(now, 'day');
+    if (diffDays === -1) return 'Yesterday';
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Tomorrow';
+
+    // Check if presentWeekKey is a valid week key format (e.g., "2026-W03")
+    // Skip week comparison for special keys like 'ideas'
+    if (!/^\d{4}-W\d{2}$/.test(presentWeekKey)) {
+        return targetDate.format('MMM D');
+    }
+
+    // Convert presentWeekKey back to a date (Sunday)
+    const presentWeekStart = getFirstDayOfWeek(presentWeekKey);
+
+    // Check if target date is in the same week range [Sunday, Saturday]
+    const startOfPresentWeek = dayjs(presentWeekStart).startOf('day');
+    const endOfPresentWeek = startOfPresentWeek.add(7, 'day'); // Exclusive end
+
+    if (targetDate.isAfter(startOfPresentWeek.subtract(1, 'second')) && targetDate.isBefore(endOfPresentWeek)) {
+        return targetDate.format('dddd');
+    }
+
+    return targetDate.format('MMM D');
+}
+
+/**
  * Check if a week is in the past relative to present.
  */
 export function isPastWeek(weekKey: WeekKey, presentWeekKey: WeekKey): boolean {

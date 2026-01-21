@@ -56,6 +56,60 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen: _isOpen, o
         URL.revokeObjectURL(url);
     };
 
+    const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const data = JSON.parse(event.target?.result as string);
+                if (data.items && Array.isArray(data.items)) {
+                    if (confirm(`Import ${data.items.length} items and ${data.routines?.length || 0} routines? This will replace your current data.`)) {
+                        useTaskStore.setState({
+                            items: data.items,
+                            routines: data.routines || [],
+                            dataVersion: (data.meta?.version || 0) + 1
+                        });
+                        useTaskStore.getState().triggerSync();
+                        alert('Import successful!');
+                    }
+                } else {
+                    alert('Invalid backup file format.');
+                }
+            } catch (err) {
+                alert('Failed to parse backup file.');
+            }
+        };
+        reader.readAsText(file);
+        // Reset input so same file can be selected again
+        e.target.value = '';
+    };
+
+    const handleClearData = async () => {
+        if (confirm('Are you sure you want to delete ALL tasks and routines? This cannot be undone.')) {
+            if (confirm('This will permanently delete everything. Are you really sure?')) {
+                try {
+                    const { api } = await import('../api/client');
+                    const result = await api.clearData();
+
+                    if (result.success) {
+                        // Update local state to match server
+                        useTaskStore.setState({
+                            items: [],
+                            routines: [],
+                            dataVersion: result.newVersion,
+                        });
+                        alert('All data cleared.');
+                    }
+                } catch (err) {
+                    console.error('Clear failed:', err);
+                    alert('Failed to clear data. Please try again.');
+                }
+            }
+        }
+    };
+
     return (
         <div className="side-panel-container">
             <div className="panel-header">
@@ -118,11 +172,36 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen: _isOpen, o
                 {/* Data Section */}
                 <div className="settings-section">
                     <h3>Data</h3>
+
                     <button className="action-btn backup-btn" onClick={handleDownloadBackup}>
-                        Download JSON Backup
+                        📤 Export JSON
                     </button>
                     <p className="settings-help-text">
                         Download a full snapshot of your tasks and routines.
+                    </p>
+
+                    <div style={{ marginTop: '12px' }}>
+                        <label className="action-btn backup-btn" style={{ cursor: 'pointer' }}>
+                            📥 Import JSON
+                            <input
+                                type="file"
+                                accept=".json"
+                                style={{ display: 'none' }}
+                                onChange={handleImportBackup}
+                            />
+                        </label>
+                    </div>
+                    <p className="settings-help-text">
+                        Restore from a previously exported backup file.
+                    </p>
+
+                    <div style={{ marginTop: '16px' }}>
+                        <button className="action-btn danger-btn" onClick={handleClearData}>
+                            🗑️ Clear All Data
+                        </button>
+                    </div>
+                    <p className="settings-help-text">
+                        Delete all tasks and routines. This cannot be undone.
                     </p>
                 </div>
 
@@ -235,6 +314,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen: _isOpen, o
                     color: #dc2626;
                 }
                 .logout-btn:hover { background: #fee2e2; }
+
+                .danger-btn {
+                    background: #fef2f2;
+                    border: 1px solid #fca5a5;
+                    color: #dc2626;
+                }
+                .danger-btn:hover { background: #fee2e2; }
 
                 .settings-help-text {
                     font-size: 0.75rem;

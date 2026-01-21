@@ -14,15 +14,20 @@ export function mergeState(local: AppState, remote: AppState): AppState {
         }
 
         // Status Re-evaluation based on merged progress
-        if (isGoalMet(merged)) {
-            merged.status = 'complete';
-            // If it wasn't complete before, set completedAt to now (or keep existing)
-            // Ideally we keep the earliest completion time if valid, but simplest is:
-            merged.completedAt = l.status === 'complete' ? l.completedAt : (r.status === 'complete' ? r.completedAt : new Date().toISOString());
-        } else {
-            merged.status = 'incomplete';
-            merged.completedAt = undefined;
+        // Only auto-complete items that HAVE goals (time-tracked or multi-occurrence)
+        // Simple items and ideas keep their existing status
+        const hasGoals = merged.minutesGoal || merged.targetCount;
+
+        if (hasGoals) {
+            if (isGoalMet(merged)) {
+                merged.status = 'complete';
+                merged.completedAt = l.status === 'complete' ? l.completedAt : (r.status === 'complete' ? r.completedAt : new Date().toISOString());
+            } else {
+                merged.status = 'incomplete';
+                merged.completedAt = undefined;
+            }
         }
+        // For simple items without goals, keep the most recent status (remote wins by default from spread)
 
         return merged;
     });

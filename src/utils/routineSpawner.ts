@@ -41,8 +41,10 @@ function getWeekInMonth(date: dayjs.Dayjs): number {
         return 1;
     }
 
+    // Don't cap at 5 - some months have 6 weeks partially
+    // This ensures each week gets a unique WIM value
     const weekNum = Math.floor(date.diff(firstSunday, 'day') / 7) + 2;
-    return Math.min(weekNum, 5);
+    return weekNum;
 }
 
 /**
@@ -178,6 +180,8 @@ export function spawnTasksForRoutine(
             week: weekKey,
             status: 'incomplete',
             orderIndex: 1000, // Will be reindexed
+            notes: routine.notes,
+            inheritedNotes: routine.notes,
         };
 
         // Apply task type properties
@@ -221,6 +225,15 @@ export function updateRoutineTasks(
             ...item,
             title: routine.title,
         };
+
+        // Update notes if they haven't been manually modified
+        // (note: this basic update doesn't handle the overwrite warning - that's in store.updateRoutine)
+        const notesUnmodified = item.notes === item.inheritedNotes ||
+            (item.notes === undefined && item.inheritedNotes === undefined);
+        if (notesUnmodified) {
+            updated.notes = routine.notes;
+            updated.inheritedNotes = routine.notes;
+        }
 
         // Update task type properties
         if (routine.taskType === 'time-tracked') {

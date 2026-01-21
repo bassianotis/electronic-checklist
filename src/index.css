@@ -838,7 +838,7 @@ button:disabled {
 .archive-list {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-xs);
+    gap: 0;
 }
 
 .archive-item {
@@ -2067,8 +2067,7 @@ button:disabled {
 .ideas-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    /* Standard task gap */
+    gap: 0;
     min-height: 100px;
     /* Drop target area */
 }
@@ -2200,9 +2199,9 @@ button:disabled {
 
 .auth-input:focus {
     outline: none;
-    border-color: var(--washi-blue);
+    border-color: var(--wk-present);
     background: var(--bg-primary);
-    box-shadow: 0 0 0 3px rgba(74, 107, 138, 0.1);
+    box-shadow: 0 0 0 3px rgba(244, 211, 94, 0.2);
 }
 
 .auth-button {
@@ -2218,13 +2217,13 @@ button:disabled {
 }
 
 .auth-button.primary {
-    background: var(--wk-future);
-    color: var(--kraft-white);
+    background: var(--wk-present);
+    color: var(--ink-black);
     border: 2px solid transparent;
 }
 
 .auth-button.primary:hover:not(:disabled) {
-    background: #4A6B8A;
+    background: #E5B854;
     transform: translateY(-1px);
     box-shadow: var(--shadow-md);
 }
@@ -2320,4 +2319,91 @@ button:disabled {
     to {
         transform: rotate(360deg);
     }
+}
+
+/* Rich Text Styles */
+.rich-text-content {
+    font-size: inherit;
+    color: inherit;
+    line-height: inherit;
+}
+
+.rich-text-content .rt-paragraph {
+    min-height: 1.2em;
+    /* Ensure empty lines take space */
+}
+
+.rich-text-content .rt-list {
+    margin: 4px 0;
+    padding-left: 20px;
+}
+
+.rich-text-content.truncated {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.rich-text-content.truncated .rt-paragraph,
+.rich-text-content.truncated li {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    /* Force single line logic */
+    display: block;
+    min-height: auto;
+}
+
+.rich-text-content.truncated .rt-list {
+    margin: 0;
+    padding-left: 0;
+    /* When truncated, flatten list to look like text? Or just show bullet? */
+    /* If bullet, show it. */
+    padding-left: 1.2em;
+}
+
+.rt-more-indicator {
+    opacity: 0.6;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+.rich-text-content li {
+    margin-bottom: 2px;
+}
+
+/* Update Editor Notes Input for Textarea */
+/* Update Editor Notes Input for Textarea */
+.editor-notes-input {
+    width: 100%;
+    padding: 0;
+    margin-top: 2px;
+    /* Match display margin */
+    border: none;
+    border-radius: 0;
+    font-size: 0.75rem;
+    font-family: inherit;
+    resize: none;
+    /* No resize handle */
+    background: transparent;
+    color: inherit;
+    line-height: 1.4;
+    min-height: 1.4em;
+    /* Start at one line height */
+    outline: none;
+    box-shadow: none;
+}
+
+.editor-notes-input:focus {
+    outline: none;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+}
+
+.editor-textarea {
+    resize: vertical;
+    min-height: 100px;
+    font-family: inherit;
+    line-height: 1.5;
 }

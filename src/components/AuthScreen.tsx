@@ -22,7 +22,7 @@ export const AuthScreen: React.FC = () => {
         <div className="auth-container">
             <div className="auth-card">
                 <h1 className="auth-title">
-                    {mode === 'login' ? 'Welcome Back' : 'Create Account'}
+                    {mode === 'login' ? 'Sign in' : 'Create Account'}
                 </h1>
 
                 {error && (
