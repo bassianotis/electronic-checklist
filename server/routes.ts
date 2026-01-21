@@ -129,6 +129,12 @@ router.get('/data', requireAuth, (req: AuthenticatedRequest, res: Response) => {
     res.json({ data: JSON.parse(row.data_json), version: row.version });
 });
 
+router.get('/audit', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.user!.id;
+    const logs = db.prepare('SELECT * FROM audit_logs WHERE user_id = ? ORDER BY created_at DESC LIMIT 100').all(userId);
+    res.json(logs);
+});
+
 router.post('/data', requireAuth, (req: AuthenticatedRequest, res: Response) => {
     const userId = req.user!.id; // ! is safe because requireAuth ensures it
     const newData = req.body; // Expecting { ...state... }
@@ -164,6 +170,37 @@ router.post('/data', requireAuth, (req: AuthenticatedRequest, res: Response) => 
         const jsonStr = JSON.stringify(newData);
 
         if (row) {
+            // AUDIT LOGGING: Check for mass completion
+            try {
+                const oldData = JSON.parse(row.data_json);
+                const completedItems: string[] = [];
+                const oldItemMap = new Map((oldData.items || []).map((i: any) => [i.id, i]));
+
+                if (newData.items && Array.isArray(newData.items)) {
+                    for (const newItem of newData.items) {
+                        const oldItem: any = oldItemMap.get(newItem.id);
+                        // Detect transition: Incomplete -> Complete
+                        if (oldItem && oldItem.status === 'incomplete' && newItem.status === 'complete') {
+                            completedItems.push(newItem.text || newItem.id);
+                        }
+                    }
+                }
+
+                if (completedItems.length > 0) {
+                    db.prepare('INSERT INTO audit_logs (user_id, action_type, details) VALUES (?, ?, ?)').run(
+                        userId,
+                        'COMPLETION_EVENT',
+                        JSON.stringify({
+                            count: completedItems.length,
+                            items: completedItems.slice(0, 50), // Limit size
+                            userAgent: req.headers['user-agent']
+                        })
+                    );
+                }
+            } catch (e) {
+                console.error("Audit log error:", e);
+            }
+
             db.prepare('UPDATE state SET data_json = ?, version = ?, updated_at = unixepoch() WHERE user_id = ?')
                 .run(jsonStr, newVersion, userId);
         } else {
