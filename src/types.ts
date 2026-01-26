@@ -47,9 +47,84 @@ export interface Routine {
     deletedAt?: number;
 }
 
+// ==================== WeekNotes & Collections ====================
+
+/**
+ * DateDefinition: Defines when a collection item occurs annually.
+ * - Fixed: A specific month and day (e.g., July 4th).
+ * - Relative: Nth weekday of a month (e.g., 4th Thursday of November).
+ */
+export type DateDefinition =
+    | { type: 'fixed'; month: number; day: number } // month: 1-12, day: 1-31
+    | { type: 'relative'; month: number; weekday: number; ordinal: number | 'last' }; // weekday: 0=Sun..6=Sat, ordinal: 1-5 or 'last'
+
+/**
+ * Collection: A group of recurring informational dates (e.g., "Holidays", "Birthdays").
+ */
+export interface Collection {
+    id: string;
+    name: string;
+    updatedAt?: number;
+    deletedAt?: number;
+}
+
+/**
+ * CollectionItem: A template for a recurring informational item within a collection.
+ * Supports weekly, biweekly, monthly, and annually recurrence patterns.
+ */
+export interface CollectionItem {
+    id: string;
+    collectionId: string;
+    title: string;
+    cadence: 'weekly' | 'biweekly' | 'monthly' | 'annually';
+
+    // For weekly/biweekly: which day of the week (0=Sun..6=Sat)
+    dayOfWeek?: number;
+
+    // For monthly/annually: defines the specific day pattern
+    dateDefinition?: DateDefinition;
+
+    // Starting point for cadence alignment (weekly/biweekly/monthly)
+    anchorWeek?: WeekKey;
+
+    // Bounds
+    isYearRound: boolean;
+    // For annually: start/end years
+    startYear?: number;
+    endYear?: number;
+    // For weekly/biweekly/monthly: seasonal bounds (month + week-in-month)
+    startMonth?: number;       // 1-12
+    startWeekInMonth?: number; // 1-5
+    endMonth?: number;         // 1-12
+    endWeekInMonth?: number;   // 1-5
+
+    notes?: string; // Default notes for spawned WeekNotes
+    updatedAt?: number;
+    deletedAt?: number;
+}
+
+/**
+ * WeekNote: An informational note displayed at the top of a week.
+ * Can be a one-off or spawned from a CollectionItem.
+ */
+export interface WeekNote {
+    id: string;
+    week: WeekKey;
+    title: string;
+    dateISO?: string; // The specific date (e.g., "2026-12-25"), optional for date-less notes
+    collectionItemId?: string; // If spawned from a collection
+    notes?: string; // User-editable notes for this instance
+    inheritedNotes?: string; // Original notes from CollectionItem at spawn time
+    updatedAt?: number;
+    deletedAt?: number;
+}
+
 export interface AppState {
     items: Item[];
     routines: Routine[];
+    collections: Collection[];
+    collectionItems: CollectionItem[];
+    weekNotes: WeekNote[];
     currentTime: string; // ISO timestamp, mocked "now"
     allowUncomplete: boolean; // DevPanel flag
     userTimezone: string;

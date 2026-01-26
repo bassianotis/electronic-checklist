@@ -304,6 +304,12 @@ button:disabled {
     border-left: 3px solid var(--washi-blue);
 }
 
+.chip.due-date.completed {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--text-muted);
+    border-left: none;
+}
+
 .chip.routine {
     background: rgba(139, 92, 180, 0.2);
     color: #5D3A8E;
@@ -577,12 +583,114 @@ button:disabled {
     margin-top: 0;
 }
 
+/* Week Notes Container - informational dates at top of week */
+.week-notes-container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-md);
+    padding-left: var(--spacing-sm);
+}
+
+/* Week Note Card - subdued styling */
+.week-note-card {
+    padding: var(--spacing-xs) 0;
+    cursor: pointer;
+    transition: background var(--transition-fast);
+    border-radius: var(--radius-sm);
+}
+
+.week-note-card:hover {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.week-note-card.editing {
+    cursor: default;
+}
+
+.week-note-content {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--spacing-xs) var(--spacing-sm);
+}
+
+.week-note-title {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.week-note-date {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.week-note-notes {
+    flex-basis: 100%;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    margin-top: 0;
+}
+
+/* Inline editor - blends into card like task notes */
+.week-note-editor {
+    flex-basis: 100%;
+    width: 100%;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    outline: none;
+    padding: 0;
+    margin-top: var(--spacing-xs);
+    resize: none;
+    overflow: hidden;
+}
+
+.week-note-editor::placeholder {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.btn-sm {
+    padding: 4px 12px;
+    font-size: 0.75rem;
+}
+
+.btn-primary {
+    background: #5D3A8E;
+    color: white;
+    border-radius: var(--radius-sm);
+    transition: background var(--transition-fast);
+}
+
+.btn-primary:hover {
+    background: #4A2D72;
+}
+
+.btn-secondary {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    transition: background var(--transition-fast);
+}
+
+.btn-secondary:hover {
+    background: var(--border-light);
+}
+
 .week-date-label {
     font-size: 0.85rem;
     font-weight: 400;
     color: var(--ink-brown);
-    padding: 4px var(--spacing-md);
-    margin-bottom: var(--spacing-sm);
+    padding: 2px var(--spacing-sm);
+    margin-bottom: var(--spacing-xs);
     display: inline-block;
     background: var(--kraft-light);
     border-left: 4px solid var(--kraft-dark);
@@ -2352,6 +2460,8 @@ button:disabled {
     /* Force single line logic */
     display: block;
     min-height: auto;
+    min-width: 0;
+    flex: 1;
 }
 
 .rich-text-content.truncated .rt-list {
@@ -2360,6 +2470,9 @@ button:disabled {
     /* When truncated, flatten list to look like text? Or just show bullet? */
     /* If bullet, show it. */
     padding-left: 1.2em;
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
 }
 
 .rt-more-indicator {
@@ -2406,4 +2519,18 @@ button:disabled {
     min-height: 100px;
     font-family: inherit;
     line-height: 1.5;
+}
+
+/* Date picker icon styling to match trash icon */
+.week-note-content input[type="date"]::-webkit-calendar-picker-indicator {
+    opacity: 0.3;
+    /* Lower opacity to match grey trash icon weight */
+    cursor: pointer;
+    transition: opacity 0.2s;
+    margin-right: 4px;
+    /* Align with trash icon (which has 4px padding from right) */
+}
+
+.week-note-content input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
 }

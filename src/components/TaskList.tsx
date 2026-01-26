@@ -34,12 +34,13 @@ import { IdeasPanel } from './IdeasPanel';
 import { RoutineManager } from './RoutineManager';
 import { ArchivePanel } from './ArchivePanel';
 import { SettingsPanel } from './SettingsPanel';
+import { CollectionsPanel } from './CollectionsPanel';
 import { WeekSection } from './WeekSection';
 
 interface TaskListProps {
     onPresentWeekVisible?: (visible: boolean, isAbove?: boolean) => void;
-    activePanel: 'archive' | 'routines' | 'ideas' | 'settings' | null;
-    onTogglePanel: (panel: 'archive' | 'routines' | 'ideas' | 'settings') => void;
+    activePanel: 'archive' | 'routines' | 'ideas' | 'settings' | 'collections' | null;
+    onTogglePanel: (panel: 'archive' | 'routines' | 'ideas' | 'settings' | 'collections') => void;
     onClosePanel: () => void;
 }
 
@@ -156,7 +157,7 @@ export const TaskList: React.FC<TaskListProps> = ({
                     }
                 });
             },
-            { threshold: 0.5 }
+            { threshold: 0 }
         );
         return () => observerRef.current?.disconnect();
     }, [onPresentWeekVisible]);
@@ -390,6 +391,9 @@ export const TaskList: React.FC<TaskListProps> = ({
                     )}
                     {activePanel === 'settings' && (
                         <SettingsPanel isOpen={true} onClose={onClosePanel} />
+                    )}
+                    {activePanel === 'collections' && (
+                        <CollectionsPanel isOpen={true} onClose={onClosePanel} />
                     )}
                 </SideDrawer>
 

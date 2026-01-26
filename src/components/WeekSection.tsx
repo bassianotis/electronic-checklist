@@ -1,10 +1,14 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { TaskCard } from './TaskCard';
 import { InlineTaskEditor } from './InlineTaskEditor';
+import { WeekNoteCard } from './WeekNoteCard';
 import type { WeekKey, Item, Routine } from '../types';
 import { getProjectedItems } from '../utils/dragProjection';
+import { useTaskStore } from '../store/store';
+import { getFirstDayOfWeek } from '../utils/timeUtils';
+import dayjs from 'dayjs';
 
 interface WeekSectionProps {
     week: WeekKey;
@@ -57,6 +61,66 @@ export const WeekSection: React.FC<WeekSectionProps> = ({
         id: week
     });
 
+    // Get week notes for this week - select raw array and memoize the filter
+    const allWeekNotes = useTaskStore((s) => s.weekNotes);
+    const weekNotes = useMemo(() =>
+        allWeekNotes
+            .filter((note) => note.week === week && !note.deletedAt)
+            .sort((a, b) => {
+                if (a.dateISO && b.dateISO) {
+                    return a.dateISO.localeCompare(b.dateISO);
+                }
+                return a.title.localeCompare(b.title);
+            }),
+        [allWeekNotes, week]
+    );
+
+    // Inline event creation state
+    const addWeekNote = useTaskStore((s) => s.addWeekNote);
+    const [isCreatingEvent, setIsCreatingEvent] = useState(false);
+    const [newEventTitle, setNewEventTitle] = useState('');
+    const [newEventDate, setNewEventDate] = useState('');
+
+    // Handlers for inline event creation
+    // Calculate week bounds for date picker
+    const weekStart = useMemo(() => dayjs(getFirstDayOfWeek(week)), [week]);
+    const weekEnd = useMemo(() => weekStart.add(6, 'day'), [weekStart]);
+    const minDate = weekStart.format('YYYY-MM-DD');
+    const maxDate = weekEnd.format('YYYY-MM-DD');
+
+    const handleStartCreating = () => {
+        // Default to today if within week, otherwise start of week
+        const today = dayjs();
+        let defaultDate = minDate;
+
+        // Check if today is within week range (inclusive)
+        if ((today.isSame(weekStart, 'day') || today.isAfter(weekStart, 'day')) &&
+            (today.isSame(weekEnd, 'day') || today.isBefore(weekEnd, 'day'))) {
+            defaultDate = today.format('YYYY-MM-DD');
+        }
+
+        setNewEventDate(defaultDate);
+        setNewEventTitle('');
+        setIsCreatingEvent(true);
+    };
+
+    const handleSaveEvent = () => {
+        if (!newEventTitle.trim() || !newEventDate) return;
+        addWeekNote({
+            week,
+            title: newEventTitle.trim(),
+            dateISO: newEventDate,
+        });
+        setIsCreatingEvent(false);
+        setNewEventTitle('');
+        setNewEventDate('');
+    };
+
+    const handleCancelCreating = () => {
+        setIsCreatingEvent(false);
+        setNewEventTitle('');
+        setNewEventDate('');
+    };
 
     const projectedItems = getProjectedItems(weekItems, dragOrigin, week);
 
@@ -73,17 +137,114 @@ export const WeekSection: React.FC<WeekSectionProps> = ({
                     <div className={`section-header relative-header ${relativeClass}`}>
                         {headerLabel}
                     </div>
-                    <div className="week-date-label">{weekDateLabel}</div>
+                    <div
+                        className="week-date-label clickable"
+                        onClick={handleStartCreating}
+                        style={{ cursor: 'pointer' }}
+                        title="Click to add event"
+                    >
+                        {weekDateLabel}
+                    </div>
                 </div>
             )}
             {showCombinedMonthDate && (
-                <div className="section-header month-header">
+                <div
+                    className="section-header month-header clickable"
+                    onClick={handleStartCreating}
+                    style={{ cursor: 'pointer' }}
+                    title="Click to add event"
+                >
                     {combinedMonthDateLabel}
                 </div>
             )}
             {!showHeader && (
-                <div className="week-date-label standalone">{weekDateLabel}</div>
+                <div
+                    className="week-date-label standalone clickable"
+                    onClick={handleStartCreating}
+                    style={{ cursor: 'pointer' }}
+                    title="Click to add event"
+                >
+                    {weekDateLabel}
+                </div>
             )}
+
+            {/* Week Notes Section */}
+            <div className="week-notes-container">
+                {/* Inline Event Creator */}
+                {isCreatingEvent && (
+                    <div
+                        className="week-note-card inline-event-creator"
+                        style={{
+                            padding: 'var(--spacing-xs) 0',
+                            marginBottom: weekNotes.length > 0 ? 'var(--spacing-xs)' : 0
+                        }}
+                        onBlur={(e) => {
+                            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                                if (newEventTitle.trim() && newEventDate) {
+                                    handleSaveEvent();
+                                } else {
+                                    handleCancelCreating();
+                                }
+                            }
+                        }}
+                    >
+                        <div className="week-note-content" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 'var(--spacing-sm)' }}>
+                            <input
+                                type="text"
+                                placeholder="Event name"
+                                autoFocus
+                                value={newEventTitle}
+                                onChange={(e) => setNewEventTitle(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveEvent();
+                                    if (e.key === 'Escape') handleCancelCreating();
+                                }}
+                                style={{
+                                    flex: 1, // Take available space? Or auto?
+                                    // Week Note title is just a span. 
+                                    // Let's give it a min-width to Type.
+                                    minWidth: '120px',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    outline: 'none',
+                                    fontSize: '0.85rem',
+                                    fontWeight: 500,
+                                    color: 'var(--text-secondary)',
+                                    padding: 0,
+                                    margin: 0,
+                                    fontFamily: 'inherit'
+                                }}
+                            />
+                            <input
+                                type="date"
+                                value={newEventDate}
+                                onChange={(e) => setNewEventDate(e.target.value)}
+                                min={minDate}
+                                max={maxDate}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveEvent();
+                                    if (e.key === 'Escape') handleCancelCreating();
+                                }}
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    outline: 'none',
+                                    fontSize: '0.75rem',
+                                    color: 'var(--text-muted)',
+                                    padding: 0,
+                                    margin: 0,
+                                    fontFamily: 'inherit',
+                                    width: 'auto'
+                                }}
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {weekNotes.map((note) => (
+                    <WeekNoteCard key={note.id} note={note} />
+                ))}
+            </div>
 
             {/* Sortable Context for this Week */}
             <SortableContext

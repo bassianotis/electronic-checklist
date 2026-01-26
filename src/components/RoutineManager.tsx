@@ -525,22 +525,30 @@ export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen: _isOpen,
                         {/* Cadence */}
                         <div className="editor-section">
                             <label className="editor-label">Frequency</label>
-                            <div className="cadence-options">
-                                {(['weekly', 'biweekly', 'monthly', 'annually'] as Cadence[]).map(c => (
-                                    <button
-                                        key={c}
-                                        className={`cadence-btn ${draft.cadence === c ? 'active' : ''}`}
-                                        onClick={() => updateDraft({ cadence: c })}
-                                    >
-                                        {c === 'biweekly' ? 'Every other week' : c}
-                                    </button>
-                                ))}
+                            <div className="cadence-options" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-sm)' }}>
+                                {(['weekly', 'biweekly', 'monthly', 'annually'] as Cadence[]).map(c => {
+                                    const labels: Record<string, string> = {
+                                        weekly: 'Weekly',
+                                        biweekly: 'Biweekly',
+                                        monthly: 'Monthly',
+                                        annually: 'Annually'
+                                    };
+                                    return (
+                                        <button
+                                            key={c}
+                                            className={`cadence-btn ${draft.cadence === c ? 'active' : ''}`}
+                                            onClick={() => updateDraft({ cadence: c })}
+                                        >
+                                            {labels[c]}
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
 
                         {/* Year-round / Seasonal selector (not for annual tasks) */}
                         {draft.cadence !== 'annually' && (
-                            <div className="editor-section">
+                            <div className="editor-section" style={{ borderTop: '1px solid var(--border-light)', paddingTop: '16px', marginTop: '16px' }}>
                                 <label className="editor-label">Timeframe</label>
                                 <div className="timeframe-options">
                                     <button
@@ -594,7 +602,7 @@ export const RoutineManager: React.FC<RoutineManagerProps> = ({ isOpen: _isOpen,
 
                         {/* Annual: specific week picker - uses CalendarWeekPicker like other cadences */}
                         {draft.cadence === 'annually' && (
-                            <div className="editor-section">
+                            <div className="editor-section" style={{ borderTop: '1px solid var(--border-light)', paddingTop: '16px', marginTop: '16px' }}>
                                 <CalendarWeekPicker
                                     label="Occurs in"
                                     weekKey={draft.anchorWeek}

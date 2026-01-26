@@ -402,7 +402,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                             )}
 
                             {hasDueDate && (
-                                <span className={`chip due-date ${!isDueDatePast ? 'future' : ''}`}>
+                                <span className={`chip due-date ${isComplete ? 'completed' : (!isDueDatePast ? 'future' : '')}`}>
                                     Due {formatDynamicDueDate(item.dueDateISO!, presentWeek, currentTime)}
                                 </span>
                             )}
@@ -423,6 +423,13 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                             {isComplete && hasTimeProgress && item.minutes !== undefined && (
                                 <span className="chip time-logged">
                                     {item.minutes} min
+                                </span>
+                            )}
+
+                            {/* Completed occurrences */}
+                            {isComplete && isMultiOccurrence && (
+                                <span className="chip time-logged">
+                                    {item.targetCount}x
                                 </span>
                             )}
 

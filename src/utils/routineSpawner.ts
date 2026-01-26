@@ -43,7 +43,7 @@ function getWeekInMonth(date: dayjs.Dayjs): number {
 
     // Don't cap at 5 - some months have 6 weeks partially
     // This ensures each week gets a unique WIM value
-    const weekNum = Math.floor(date.diff(firstSunday, 'day') / 7) + 2;
+    const weekNum = Math.floor(date.diff(firstSunday, 'day') / 7) + (firstOfMonth.day() === 0 ? 1 : 2);
     return weekNum;
 }
 

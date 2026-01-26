@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Item, Routine, WeekKey, AppState } from '../types';
+import type { Item, Routine, WeekKey, AppState, Collection, CollectionItem, WeekNote } from '../types';
 import { IDEAS_WEEK_KEY } from '../types';
 // Default "now" time - January 13, 2026 at noon (Maintenance of original dev time)
 const DEFAULT_NOW = '2026-01-13T12:00:00.000Z';
@@ -17,6 +17,7 @@ import {
     updateRoutineTasks,
     removeOutdatedRoutineTasks
 } from '../utils/routineSpawner';
+import { spawnCollectionNotes, removeOrphanedWeekNotes, updateWeekNotesFromCollectionItem, removeOutdatedWeekNotes } from '../utils/collectionSpawner';
 import { executeRolloverLogic } from '../utils/rolloverUtils';
 import { api } from '../api/client';
 import { mergeState } from '../utils/mergeUtils';
@@ -51,6 +52,19 @@ interface TaskStore extends AppState {
     toggleAllowUncomplete: () => void;
     resetData: () => void;
 
+    // Collection & WeekNote Actions
+    addCollection: (name: string) => string;
+    updateCollection: (id: string, updates: Partial<Collection>) => void;
+    deleteCollection: (id: string) => void;
+    addCollectionItem: (collectionId: string, item: Omit<CollectionItem, 'id' | 'collectionId'>) => string;
+    updateCollectionItem: (id: string, updates: Partial<CollectionItem>, overwriteModifiedNotes?: boolean) => void;
+    deleteCollectionItem: (id: string) => void;
+    addWeekNote: (note: Omit<WeekNote, 'id'>) => string;
+    updateWeekNote: (id: string, updates: Partial<Omit<WeekNote, 'id'>>) => void;
+    deleteWeekNote: (id: string) => void;
+    spawnCollectionNotes: () => void;
+    getWeekNotes: (week: WeekKey) => WeekNote[];
+
     // Time Management
     isTimeFrozen: boolean;
     toggleTimeFreeze: () => void;
@@ -79,6 +93,9 @@ export const useTaskStore = create<TaskStore>()(
         (set, get) => ({
             items: initialData.items,
             routines: initialData.routines,
+            collections: [],
+            collectionItems: [],
+            weekNotes: [],
             currentTime: DEFAULT_NOW,
             isTimeFrozen: false,
             allowUncomplete: false,
@@ -97,6 +114,9 @@ export const useTaskStore = create<TaskStore>()(
                     const payload: AppState = {
                         items: state.items,
                         routines: state.routines,
+                        collections: state.collections,
+                        collectionItems: state.collectionItems,
+                        weekNotes: state.weekNotes,
                         currentTime: state.currentTime,
                         allowUncomplete: state.allowUncomplete,
                         userTimezone: state.userTimezone,
@@ -646,6 +666,8 @@ export const useTaskStore = create<TaskStore>()(
                     currentTime: dayjs(state.currentTime).add(days, 'day').toISOString(),
                 }));
                 get().rolloverPastItems();
+                get().spawnRoutineTasks();  // Spawn routine tasks for new visible weeks
+                get().spawnCollectionNotes();  // Spawn collection notes for new visible weeks
             },
 
             setTime: (isoTime: string) => {
@@ -754,12 +776,187 @@ export const useTaskStore = create<TaskStore>()(
                         return 0;
                     });
             },
+
+            // ==================== Collection Actions ====================
+
+            addCollection: (name: string) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                const id = `collection-${nowTs}-${Math.random().toString(36).substr(2, 9)}`;
+                const collection: Collection = { id, name, updatedAt: nowTs };
+                set((state) => ({ collections: [...state.collections, collection] }));
+                triggerSync();
+                return id;
+            },
+
+            updateCollection: (id: string, updates: Partial<Collection>) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => ({
+                    collections: state.collections.map((c) =>
+                        c.id === id ? { ...c, ...updates, updatedAt: nowTs } : c
+                    ),
+                }));
+                triggerSync();
+            },
+
+            deleteCollection: (id: string) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => {
+                    // Soft-delete collection and all its items
+                    const updatedCollections = state.collections.map((c) =>
+                        c.id === id ? { ...c, deletedAt: nowTs, updatedAt: nowTs } : c
+                    );
+                    const updatedItems = state.collectionItems.map((item) =>
+                        item.collectionId === id ? { ...item, deletedAt: nowTs, updatedAt: nowTs } : item
+                    );
+                    // Remove orphaned week notes
+                    const cleanedNotes = removeOrphanedWeekNotes(state.weekNotes, updatedItems);
+                    return {
+                        collections: updatedCollections,
+                        collectionItems: updatedItems,
+                        weekNotes: cleanedNotes,
+                    };
+                });
+                triggerSync();
+            },
+
+            addCollectionItem: (collectionId: string, itemData: Omit<CollectionItem, 'id' | 'collectionId'>) => {
+                const { triggerSync, spawnCollectionNotes: spawnNotes } = get();
+                const nowTs = Date.now();
+                const id = `colitem-${nowTs}-${Math.random().toString(36).substr(2, 9)}`;
+                const item: CollectionItem = { ...itemData, id, collectionId, updatedAt: nowTs };
+                set((state) => ({ collectionItems: [...state.collectionItems, item] }));
+                spawnNotes(); // Spawn notes for the new item
+                triggerSync();
+                return id;
+            },
+
+            updateCollectionItem: (id: string, updates: Partial<CollectionItem>, overwriteModifiedNotes?: boolean) => {
+                const { triggerSync, spawnCollectionNotes: spawnNotes } = get();
+                const nowTs = Date.now();
+                set((state) => {
+                    // Update the collection item
+                    const updatedItems = state.collectionItems.map((item) =>
+                        item.id === id ? { ...item, ...updates, updatedAt: nowTs } : item
+                    );
+
+                    // Find the updated item
+                    const updatedItem = updatedItems.find((item) => item.id === id);
+                    if (!updatedItem) {
+                        return { collectionItems: updatedItems };
+                    }
+
+                    // Remove WeekNotes that no longer match the schedule
+                    const notesAfterRemoval = removeOutdatedWeekNotes(state.weekNotes, updatedItem);
+
+                    // Propagate changes to existing WeekNotes (like routines do)
+                    const updatedWeekNotes = updateWeekNotesFromCollectionItem(
+                        notesAfterRemoval,
+                        updatedItem,
+                        overwriteModifiedNotes || false
+                    ).map(note => note.collectionItemId === id ? { ...note, updatedAt: nowTs } : note);
+
+                    return {
+                        collectionItems: updatedItems,
+                        weekNotes: updatedWeekNotes,
+                    };
+                });
+                // Spawn any new notes for visible weeks
+                spawnNotes();
+                triggerSync();
+            },
+
+            deleteCollectionItem: (id: string) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => {
+                    const updatedItems = state.collectionItems.map((item) =>
+                        item.id === id ? { ...item, deletedAt: nowTs, updatedAt: nowTs } : item
+                    );
+                    const cleanedNotes = removeOrphanedWeekNotes(state.weekNotes, updatedItems);
+                    return {
+                        collectionItems: updatedItems,
+                        weekNotes: cleanedNotes,
+                    };
+                });
+                triggerSync();
+            },
+
+            // ==================== WeekNote Actions ====================
+
+            addWeekNote: (noteData: Omit<WeekNote, 'id'>) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                const id = `weeknote-${nowTs}-${Math.random().toString(36).substr(2, 9)}`;
+                const note: WeekNote = { ...noteData, id, updatedAt: nowTs };
+                set((state) => ({ weekNotes: [...state.weekNotes, note] }));
+                triggerSync();
+                return id;
+            },
+
+            updateWeekNote: (id: string, updates: Partial<Omit<WeekNote, 'id'>>) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => ({
+                    weekNotes: state.weekNotes.map((note) =>
+                        note.id === id ? { ...note, ...updates, updatedAt: nowTs } : note
+                    ),
+                }));
+                triggerSync();
+            },
+
+            deleteWeekNote: (id: string) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => ({
+                    weekNotes: state.weekNotes.map((note) =>
+                        note.id === id ? { ...note, deletedAt: nowTs, updatedAt: nowTs } : note
+                    ),
+                }));
+                triggerSync();
+            },
+
+            spawnCollectionNotes: () => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => {
+                    const visibleWeeks = getVisibleWeeks(state.currentTime);
+                    const newNotes = spawnCollectionNotes(
+                        state.collectionItems,
+                        visibleWeeks,
+                        state.weekNotes
+                    );
+                    const newNotesStamped = newNotes.map((n) => ({ ...n, updatedAt: nowTs }));
+                    return { weekNotes: [...state.weekNotes, ...newNotesStamped] };
+                });
+                if (get().weekNotes.length > 0) { // Only sync if something changed
+                    triggerSync();
+                }
+            },
+
+            getWeekNotes: (week: WeekKey) => {
+                const { weekNotes } = get();
+                return weekNotes
+                    .filter((note) => note.week === week && !note.deletedAt)
+                    .sort((a, b) => {
+                        // Sort by date if available, then by title
+                        if (a.dateISO && b.dateISO) {
+                            return a.dateISO.localeCompare(b.dateISO);
+                        }
+                        return a.title.localeCompare(b.title);
+                    });
+            },
         }),
         {
             name: 'task-list-storage',
             partialize: (state) => ({
                 items: state.items,
                 routines: state.routines,
+                collections: state.collections,
+                collectionItems: state.collectionItems,
+                weekNotes: state.weekNotes,
                 currentTime: state.currentTime,
                 allowUncomplete: state.allowUncomplete,
                 userTimezone: state.userTimezone,

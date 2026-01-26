@@ -34,6 +34,11 @@ export function mergeState(local: AppState, remote: AppState): AppState {
 
     const mergedRoutines = mergeEntities(local.routines, remote.routines, (_l, r) => ({ ...r }));
 
+    // Merge collections, collection items, and week notes (simple LWW for now)
+    const mergedCollections = mergeEntities(local.collections || [], remote.collections || [], (_l, r) => ({ ...r }));
+    const mergedCollectionItems = mergeEntities(local.collectionItems || [], remote.collectionItems || [], (_l, r) => ({ ...r }));
+    const mergedWeekNotes = mergeEntities(local.weekNotes || [], remote.weekNotes || [], (_l, r) => ({ ...r }));
+
     // Timezone: Remote usually implies "Server/User Source of Truth", but strictly it's per-user.
     // If we changed TZ locally, we might want to keep it. 
     // Let's say: more recent update wins for settings.
@@ -43,6 +48,9 @@ export function mergeState(local: AppState, remote: AppState): AppState {
         ...remote,
         items: mergedItems,
         routines: mergedRoutines,
+        collections: mergedCollections,
+        collectionItems: mergedCollectionItems,
+        weekNotes: mergedWeekNotes,
         // Preserve local dev flags
         allowUncomplete: local.allowUncomplete,
         currentTime: local.currentTime, // Keep local time mocking

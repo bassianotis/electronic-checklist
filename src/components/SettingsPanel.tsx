@@ -18,6 +18,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen: _isOpen, o
         resetTime,
         items,
         routines,
+        collections,
+        collectionItems,
+        weekNotes,
         dataVersion,
         getPresentWeek
     } = useTaskStore();
@@ -40,6 +43,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen: _isOpen, o
         const exportData = {
             items,
             routines,
+            collections,
+            collectionItems,
+            weekNotes,
             meta: {
                 version: dataVersion,
                 exportedAt: new Date().toISOString()
@@ -65,10 +71,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen: _isOpen, o
             try {
                 const data = JSON.parse(event.target?.result as string);
                 if (data.items && Array.isArray(data.items)) {
-                    if (confirm(`Import ${data.items.length} items and ${data.routines?.length || 0} routines? This will replace your current data.`)) {
+                    if (confirm(`Import ${data.items.length} items, ${data.routines?.length || 0} routines, and ${data.collections?.length || 0} collections? This will replace your current data.`)) {
                         useTaskStore.setState({
                             items: data.items,
                             routines: data.routines || [],
+                            collections: data.collections || [],
+                            collectionItems: data.collectionItems || [],
+                            weekNotes: data.weekNotes || [],
                             dataVersion: (data.meta?.version || 0) + 1
                         });
                         useTaskStore.getState().triggerSync();
@@ -98,6 +107,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen: _isOpen, o
                         useTaskStore.setState({
                             items: [],
                             routines: [],
+                            collections: [],
+                            collectionItems: [],
+                            weekNotes: [],
                             dataVersion: result.newVersion,
                         });
                         alert('All data cleared.');

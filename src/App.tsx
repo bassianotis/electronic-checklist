@@ -13,19 +13,20 @@ import './index.css';
 const TasksPage: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { getPresentWeek, spawnRoutineTasks, rolloverPastItems } = useTaskStore();
+    const { getPresentWeek, spawnRoutineTasks, rolloverPastItems, spawnCollectionNotes } = useTaskStore();
 
     // State
-    const [activePanel, setActivePanel] = useState<'archive' | 'routines' | 'ideas' | 'settings' | null>(null);
+    const [activePanel, setActivePanel] = useState<'archive' | 'routines' | 'ideas' | 'settings' | 'collections' | null>(null);
     const [showJumpToToday, setShowJumpToToday] = useState(false);
     const [isAboveWeek, setIsAboveWeek] = useState(false);
     const [currentVisibleWeek, setCurrentVisibleWeek] = useState<string | undefined>(undefined);
 
-    // On load: rollover past incomplete items, then spawn routine tasks
+    // On load: rollover past incomplete items, then spawn routine tasks and collection notes
     useEffect(() => {
         rolloverPastItems();
         spawnRoutineTasks();
-    }, [rolloverPastItems, spawnRoutineTasks]);
+        spawnCollectionNotes();
+    }, [rolloverPastItems, spawnRoutineTasks, spawnCollectionNotes]);
 
     // Handle scroll to week logic
     const scrollToWeek = useCallback((weekKey: string) => {
@@ -84,7 +85,7 @@ const TasksPage: React.FC = () => {
         scrollToWeek(getPresentWeek());
     }, [getPresentWeek, scrollToWeek]);
 
-    const handleTogglePanel = (panel: 'archive' | 'routines' | 'ideas' | 'settings') => {
+    const handleTogglePanel = (panel: 'archive' | 'routines' | 'ideas' | 'settings' | 'collections') => {
         setActivePanel(prev => prev === panel ? null : panel);
     };
 

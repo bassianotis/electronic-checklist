@@ -149,6 +149,21 @@ router.post('/data', requireAuth, (req: AuthenticatedRequest, res: Response) => 
     }
 
     const currentVersion = parseInt(ifMatch, 10);
+    const now = Date.now();
+    const FUTURE_TOLERANCE_MS = 5 * 60 * 1000; // 5 minutes
+
+    // Validation: Check for Future Timestamps (Prevents "God Mode" devices overwriting server)
+    if (newData.items && Array.isArray(newData.items)) {
+        for (const item of newData.items) {
+            if (item.updatedAt && item.updatedAt > now + FUTURE_TOLERANCE_MS) {
+                res.status(400).json({
+                    error: 'Future timestamp detected',
+                    details: `Item ${item.id} has time in future: ${new Date(item.updatedAt).toISOString()}`
+                });
+                return;
+            }
+        }
+    }
 
     // Transaction to Ensure Atomicity
     const updateTx = db.transaction(() => {
