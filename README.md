@@ -5,18 +5,21 @@ A self-hosted weekly task manager with routines, ideas, and multi-device sync.
 ## Features
 
 - **Weekly Task Board** – Organize tasks by week with drag-and-drop reordering
-- **Routines** – Create recurring tasks (weekly, biweekly, monthly, annually)
+- **Routines** – Create recurring tasks (weekly, biweekly, monthly, annually) with seasonal scheduling
 - **Ideas Bucket** – Capture ideas without scheduling them
+- **Time Tracking** – Set time goals and log progress with quick-add buttons
+- **Multi-Occurrence Tasks** – Track tasks that need to be done multiple times per week
+- **Future Week Protection** – Tasks in future weeks are locked until their week arrives
 - **Archive** – Keep your board clean while retaining access to completed tasks
 - **Rich Notes** – Markdown-style notes with lists and line breaks
-- **Multi-Device Sync** – Real-time sync across browsers and devices
+- **Multi-Device Sync** – Real-time sync with automatic conflict resolution
 - **Authentication** – Password protection with invite codes for registration
 
 ## Tech Stack
 
 - **Frontend**: React 19, TypeScript, Vite
 - **Backend**: Express.js, Node.js
-- **Database**: SQLite
+- **Database**: SQLite (WAL mode)
 - **Drag & Drop**: dnd-kit
 
 ## Getting Started
@@ -92,6 +95,17 @@ COOKIE_SECURE=true
 ## Persistent Data
 
 Mount a volume to `/app/data` to persist the SQLite database across container restarts. This is configured by default in `docker-compose.yml`.
+
+## Troubleshooting
+
+### Sync Issues
+If you experience unexpected data changes across devices:
+1. **Clear browser data** on the affected device (or log out and back in)
+2. The server includes audit logging at `GET /api/audit` to track sync events
+3. The server rejects updates with timestamps more than 5 minutes in the future
+
+### Blank Screen on Ideas
+If clicking "Ideas" causes a blank screen, your data may contain items with invalid week keys. Clear your browser data and re-sync from the server.
 
 ## License
 

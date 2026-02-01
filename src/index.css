@@ -1605,6 +1605,22 @@ button:disabled {
     z-index: 1;
 }
 
+/* Ensure side panel card content doesn't overflow */
+.side-panel-card .task-content {
+    overflow: hidden;
+    min-width: 0;
+}
+
+.side-panel-card .task-title {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    /* Remove highlighter effect in side panels for cleaner look */
+    background: none;
+}
+
 .routine-card {
     position: relative;
     background: var(--bg-primary);

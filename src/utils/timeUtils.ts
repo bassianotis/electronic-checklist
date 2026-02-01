@@ -60,6 +60,16 @@ export function relativeLabel(
     weekKey: WeekKey,
     presentWeekKey: WeekKey
 ): string {
+    const WEEK_KEY_REGEX = /^\d{4}-W\d{2}$/;
+
+    // Validate both week keys before processing
+    if (!weekKey || !WEEK_KEY_REGEX.test(weekKey)) {
+        return 'Unknown';
+    }
+    if (!presentWeekKey || !WEEK_KEY_REGEX.test(presentWeekKey)) {
+        return 'Unknown';
+    }
+
     if (weekKey === presentWeekKey) return 'This week';
 
     const present = getFirstDayOfWeek(presentWeekKey);

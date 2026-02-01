@@ -168,6 +168,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
     const handleStatusClick = () => {
         if (isArchived) return; // Status click disabled in archive (use restore button)
         if (isIdeas) return; // Cannot complete ideas directly
+        if (isFuture) return; // Cannot change status of future items
 
         if (isIncomplete && timeGoalMet) {
             completeItem(item.id);
@@ -389,19 +390,19 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                                 </span>
                             )}
 
-                            {showScheduleChip && (
+                            {showScheduleChip && !isArchived && (
                                 <span className={`chip schedule ${scheduleChipClass}`}>
                                     {relativeLabel(item.week, presentWeek)}
                                 </span>
                             )}
 
-                            {item.originalWeek && (
+                            {item.originalWeek && !isArchived && (
                                 <span className="chip rolled-over" title={`Originally scheduled for ${item.originalWeek}`}>
                                     ↻ {relativeLabel(item.originalWeek, presentWeek)}
                                 </span>
                             )}
 
-                            {hasDueDate && (
+                            {hasDueDate && !isArchived && (
                                 <span className={`chip due-date ${isComplete ? 'completed' : (!isDueDatePast ? 'future' : '')}`}>
                                     Due {formatDynamicDueDate(item.dueDateISO!, presentWeek, currentTime)}
                                 </span>
@@ -443,8 +444,8 @@ export const TaskCard: React.FC<TaskCardProps> = ({
             {/* Right-side action area */}
             <div className="task-actions">
 
-                {/* Time increment buttons - Hide in archive */}
-                {hasTimeProgress && !isEditing && !isArchived && (
+                {/* Time increment buttons - Hide in archive and for future items */}
+                {hasTimeProgress && !isEditing && !isArchived && !isFuture && (
                     <div className="time-btns" onClick={(e) => e.stopPropagation()}>
                         <button
                             className="time-btn"
@@ -500,11 +501,11 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                                     key={idx}
                                     className={`occurrence-box ${isBoxCompleted ? 'completed' : ''}`}
                                     onClick={() => {
-                                        if (isArchived) return;
+                                        if (isArchived || isFuture) return;
                                         if (isNextToComplete) incrementOccurrence(item.id);
                                         else if (isLastCompleted) decrementOccurrence(item.id);
                                     }}
-                                    disabled={(!isNextToComplete && !isLastCompleted) || isArchived}
+                                    disabled={(!isNextToComplete && !isLastCompleted) || isArchived || isFuture}
                                 >
                                     {isBoxCompleted && <CheckIcon />}
                                 </button>
@@ -516,9 +517,9 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                 {/* Action indicator - Hidden for Ideas */}
                 {(!isMultiOccurrence || isComplete) && !isIdeas && (
                     <button
-                        className={`action-indicator ${actionIndicatorType} ${isArchived || isIdeas ? 'static' : ''}`} // Add static class if archived or ideas
+                        className={`action-indicator ${actionIndicatorType} ${isArchived || isIdeas || isFuture ? 'static' : ''}`} // Add static class if archived, ideas, or future
                         onClick={(e) => { e.stopPropagation(); handleStatusClick(); }}
-                        disabled={isArchived || isIdeas} // Disable interaction
+                        disabled={isArchived || isIdeas || isFuture} // Disable interaction
                         aria-label={isComplete ? 'Mark as incomplete' : 'Mark as complete'}
                     >
                         {actionIndicatorType === 'complete' && <CheckIcon />}

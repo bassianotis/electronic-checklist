@@ -39,6 +39,23 @@ export function mergeState(local: AppState, remote: AppState): AppState {
     const mergedCollectionItems = mergeEntities(local.collectionItems || [], remote.collectionItems || [], (_l, r) => ({ ...r }));
     const mergedWeekNotes = mergeEntities(local.weekNotes || [], remote.weekNotes || [], (_l, r) => ({ ...r }));
 
+    // Sanitize items: Remove items with invalid week keys, clean up originalWeek
+    const WEEK_KEY_REGEX = /^\d{4}-W\d{2}$/;
+    const IDEAS_KEY = 'ideas';
+    const sanitizedItems = mergedItems
+        .filter(item => {
+            // Keep items with valid week keys or 'ideas'
+            return item.week === IDEAS_KEY || WEEK_KEY_REGEX.test(item.week);
+        })
+        .map(item => {
+            // Clean up invalid originalWeek
+            if (item.originalWeek && !WEEK_KEY_REGEX.test(item.originalWeek)) {
+                const { originalWeek, ...rest } = item;
+                return rest;
+            }
+            return item;
+        });
+
     // Timezone: Remote usually implies "Server/User Source of Truth", but strictly it's per-user.
     // If we changed TZ locally, we might want to keep it. 
     // Let's say: more recent update wins for settings.
@@ -46,7 +63,7 @@ export function mergeState(local: AppState, remote: AppState): AppState {
 
     return {
         ...remote,
-        items: mergedItems,
+        items: sanitizedItems,
         routines: mergedRoutines,
         collections: mergedCollections,
         collectionItems: mergedCollectionItems,
