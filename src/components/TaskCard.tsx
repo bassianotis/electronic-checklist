@@ -23,6 +23,7 @@ interface TaskCardProps {
     isOverlay?: boolean; // Rendered in DragOverlay
     isSpacer?: boolean; // Rendered as an invisible spacer to hold layout
     isArchived?: boolean; // Rendered in ArchivePanel (read-only, restore action)
+    isReadOnly?: boolean; // Rendered in read-only mode (viewing another user's data)
 }
 
 const GripIcon = () => (
@@ -92,6 +93,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
     isOverlay = false,
     isSpacer = false,
     isArchived = false,
+    isReadOnly = false,
 }) => {
     const { completeItem, uncompleteItem, incrementProgress, incrementOccurrence, decrementOccurrence, archiveItem, unarchiveItem, updateItem, deleteItem } = useTaskStore();
     const [isEditing, setIsEditing] = useState(false);
@@ -181,6 +183,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
 
     // Edit mode handlers
     const handleCardClick = (_e: React.MouseEvent) => {
+        if (isReadOnly) return; // Disable editing in read-only mode
         if (isArchived) {
             // In archive, clicking toggles note expansion
             setIsNoteExpanded(!isNoteExpanded);
@@ -444,8 +447,8 @@ export const TaskCard: React.FC<TaskCardProps> = ({
             {/* Right-side action area */}
             <div className="task-actions">
 
-                {/* Time increment buttons - Hide in archive and for future items */}
-                {hasTimeProgress && !isEditing && !isArchived && !isFuture && (
+                {/* Time increment buttons - Hide in archive, read-only, and for future items */}
+                {hasTimeProgress && !isEditing && !isArchived && !isReadOnly && !isFuture && (
                     <div className="time-btns" onClick={(e) => e.stopPropagation()}>
                         <button
                             className="time-btn"
@@ -464,8 +467,8 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                     </div>
                 )}
 
-                {/* Archive Button (Main List) vs Restore Button (Archive List) */}
-                {isComplete && !isArchived && (
+                {/* Archive Button (Main List) vs Restore Button (Archive List) - Hide in read-only */}
+                {isComplete && !isArchived && !isReadOnly && (
                     <button
                         className="archive-btn"
                         onClick={(e) => { e.stopPropagation(); archiveItem(item.id); }}
@@ -501,11 +504,11 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                                     key={idx}
                                     className={`occurrence-box ${isBoxCompleted ? 'completed' : ''}`}
                                     onClick={() => {
-                                        if (isArchived || isFuture) return;
+                                        if (isArchived || isFuture || isReadOnly) return;
                                         if (isNextToComplete) incrementOccurrence(item.id);
                                         else if (isLastCompleted) decrementOccurrence(item.id);
                                     }}
-                                    disabled={(!isNextToComplete && !isLastCompleted) || isArchived || isFuture}
+                                    disabled={(!isNextToComplete && !isLastCompleted) || isArchived || isFuture || isReadOnly}
                                 >
                                     {isBoxCompleted && <CheckIcon />}
                                 </button>
@@ -517,9 +520,9 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                 {/* Action indicator - Hidden for Ideas */}
                 {(!isMultiOccurrence || isComplete) && !isIdeas && (
                     <button
-                        className={`action-indicator ${actionIndicatorType} ${isArchived || isIdeas || isFuture ? 'static' : ''}`} // Add static class if archived, ideas, or future
+                        className={`action-indicator ${actionIndicatorType} ${isArchived || isIdeas || isFuture || isReadOnly ? 'static' : ''}`}
                         onClick={(e) => { e.stopPropagation(); handleStatusClick(); }}
-                        disabled={isArchived || isIdeas || isFuture} // Disable interaction
+                        disabled={isArchived || isIdeas || isFuture || isReadOnly}
                         aria-label={isComplete ? 'Mark as incomplete' : 'Mark as complete'}
                     >
                         {actionIndicatorType === 'complete' && <CheckIcon />}

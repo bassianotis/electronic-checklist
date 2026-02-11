@@ -15,10 +15,11 @@ import {
 } from '@dnd-kit/sortable';
 import { TaskCard } from './TaskCard';
 import { useTaskStore } from '../store/store';
-import type { WeekKey, Item } from '../types';
+import { useViewAsUser } from '../hooks/useViewAsUser';
+import type { WeekKey, Item, Routine } from '../types';
 import { IDEAS_WEEK_KEY } from '../types';
 
-import { compareWeekKeys, addWeeks, getFirstDayOfWeek } from '../utils/timeUtils';
+import { compareWeekKeys, addWeeks, getFirstDayOfWeek, getWeekKey } from '../utils/timeUtils';
 import dayjs from 'dayjs';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import {
@@ -85,14 +86,46 @@ export const TaskList: React.FC<TaskListProps> = ({
     onTogglePanel,
     onClosePanel
 }) => {
-    const {
-        getVisibleItems,
-        getIdeasItems,
-        getPresentWeek,
-        currentTime,
-        routines,
-        reorderItem
-    } = useTaskStore();
+    const store = useTaskStore();
+    const { isReadOnly, viewedData, activeUsername } = useViewAsUser();
+
+    // Use viewed data if in read-only mode, otherwise use store data
+    const getVisibleItems = () => {
+        if (isReadOnly && viewedData) {
+            return viewedData.items
+                ?.filter((i: any) => i.week !== IDEAS_WEEK_KEY && !i.archived && !i.deletedAt)
+                .sort((a: any, b: any) => {
+                    const weekCompare = compareWeekKeys(a.week, b.week);
+                    if (weekCompare !== 0) return weekCompare;
+                    return a.orderIndex - b.orderIndex;
+                }) || [];
+        }
+        return store.getVisibleItems();
+    };
+
+    const getIdeasItems = () => {
+        if (isReadOnly && viewedData) {
+            return viewedData.items
+                ?.filter((i: any) => i.week === IDEAS_WEEK_KEY && !i.archived && !i.deletedAt)
+                .sort((a: any, b: any) => a.orderIndex - b.orderIndex) || [];
+        }
+        return store.getIdeasItems();
+    };
+
+    const getPresentWeek = () => {
+        if (isReadOnly && viewedData) {
+            // Use current time from viewed data or store
+            const time = viewedData.currentTime || store.currentTime;
+            // Generate week key from timestamp using the utility function
+            return getWeekKey(time);
+        }
+        return store.getPresentWeek();
+    };
+
+    const currentTime = (isReadOnly && viewedData?.currentTime) || store.currentTime;
+    const routines: Routine[] = (isReadOnly && viewedData?.routines) || store.routines;
+    const weekNotes = (isReadOnly && viewedData?.weekNotes) || store.weekNotes;
+    const reorderItem = store.reorderItem;
 
     const [activeId, setActiveId] = useState<string | null>(null);
     const [announcement, setAnnouncement] = useState('');
@@ -112,10 +145,10 @@ export const TaskList: React.FC<TaskListProps> = ({
     const allDragItems = [...visibleItems, ...ideasItems];
 
     const presentWeek = getPresentWeek();
-    const routineMap = new Map(routines.map(r => [r.id, r]));
+    const routineMap = new Map<string, Routine>(routines.map((r: Routine) => [r.id, r]));
 
     // Group items by week (only visible timeline items)
-    const itemsByWeek = visibleItems.reduce((acc, item) => {
+    const itemsByWeek = visibleItems.reduce((acc: Record<WeekKey, typeof visibleItems>, item: Item) => {
         if (!acc[item.week]) acc[item.week] = [];
         acc[item.week].push(item);
         return acc;
@@ -305,16 +338,26 @@ export const TaskList: React.FC<TaskListProps> = ({
 
     return (
         <div className="task-list">
+            {/* Read-Only Banner */}
+            {isReadOnly && (
+                <div className="read-only-banner">
+                    <span className="read-only-icon">🔒</span>
+                    <span className="read-only-text">
+                        Viewing {activeUsername}'s tasks (Read-Only)
+                    </span>
+                </div>
+            )}
+
             <div className="aria-live" role="status" aria-live="polite" aria-atomic="true">
                 {announcement}
             </div>
 
             <DndContext
-                sensors={sensors}
+                sensors={isReadOnly ? [] : sensors}
                 collisionDetection={closestCenter}
-                onDragStart={handleDragStart}
-                onDragOver={handleDragOver}
-                onDragEnd={handleDragEnd}
+                onDragStart={isReadOnly ? undefined : handleDragStart}
+                onDragOver={isReadOnly ? undefined : handleDragOver}
+                onDragEnd={isReadOnly ? undefined : handleDragEnd}
             >
                 <div ref={parentConf} className="weeks-wrapper">
                     {sortedWeeks.map((week) => {
@@ -359,6 +402,8 @@ export const TaskList: React.FC<TaskListProps> = ({
                                 activeId={activeId}
                                 routineMap={routineMap}
                                 presentWeek={presentWeek}
+                                isReadOnly={isReadOnly}
+                                weekNotes={weekNotes}
                                 currentTime={currentTime}
                                 onSetEditingAt={setEditingAt}
                                 onSetHoveringAt={setHoveringAt}

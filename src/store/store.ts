@@ -396,7 +396,14 @@ export const useTaskStore = create<TaskStore>()(
                         items: state.items.map((i) => {
                             const update = updates.get(i.id);
                             if (update) {
-                                return { ...i, ...update };
+                                const updated = { ...i, ...update };
+                                // Clear scheduled-task metadata when moving to Ideas
+                                if (targetWeek === IDEAS_WEEK_KEY && i.week !== IDEAS_WEEK_KEY) {
+                                    updated.originalWeek = undefined;
+                                    updated.status = 'incomplete';
+                                    updated.completedAt = undefined;
+                                }
+                                return updated;
                             }
                             return i;
                         }),

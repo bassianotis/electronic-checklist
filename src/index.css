@@ -562,6 +562,34 @@ button:disabled {
     min-height: 200px;
 }
 
+/* Read-Only Banner */
+.read-only-banner {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    border: 2px solid #fbbf24;
+    border-radius: var(--radius-sm);
+    padding: 12px 20px;
+    margin-bottom: var(--spacing-md);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 2px 8px rgba(251, 191, 36, 0.2);
+}
+
+.read-only-icon {
+    font-size: 1.2rem;
+}
+
+.read-only-text {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #92400e;
+    letter-spacing: 0.01em;
+}
+
+
 /* Week section - scrapbook page feel */
 .week-section {
     padding-top: var(--spacing-lg);
@@ -2549,4 +2577,143 @@ button:disabled {
 
 .week-note-content input[type="date"]::-webkit-calendar-picker-indicator:hover {
     opacity: 1;
+}
+
+/* ============================================================
+   MOBILE RESPONSIVE STYLES
+   ============================================================ */
+@media (max-width: 768px) {
+
+    /* --- Layout: reduce padding for more content space --- */
+    .tasks-main {
+        padding: 16px var(--spacing-md) 100px;
+    }
+
+    /* --- Bottom dock: always-visible toolbar at bottom --- */
+
+    /* Prevent content from being hidden behind dock */
+    .tasks-main {
+        padding-bottom: 80px !important;
+    }
+
+    /* Don't squish content when panel is open */
+    .tasks-layout.panel-open .tasks-main {
+        padding-right: 0 !important;
+    }
+
+    /* Remove the slide transform — dock is always on screen */
+    .side-drawer {
+        transform: none !important;
+        width: 100vw;
+        height: auto;
+        top: auto;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* Tabs become horizontal bottom bar — always at bottom */
+    .drawer-tabs {
+        position: relative;
+        top: auto;
+        left: auto;
+        transform: none;
+        order: 2;
+    }
+
+    .toolkit-actions {
+        flex-direction: row;
+        border-radius: 0;
+        box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.08);
+        border: none;
+        border-top: 1px solid var(--border-light);
+        justify-content: space-around;
+        gap: 0;
+        padding: 6px 0;
+        padding-bottom: max(6px, env(safe-area-inset-bottom));
+        width: 100%;
+    }
+
+    .toolkit-btn {
+        flex: 1;
+        border-radius: 0;
+        height: 48px;
+    }
+
+    .toolkit-btn.active {
+        background: var(--bg-primary);
+        color: var(--primary-color);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        border-color: var(--border-light);
+        border-top: none;
+        border-radius: 10px;
+        transform: none;
+    }
+
+    /* Content hidden when drawer is closed */
+    .drawer-content {
+        display: none;
+    }
+
+    /* When open: full screen panel above dock */
+    .side-drawer.open {
+        height: 100vh;
+        top: 0;
+    }
+
+    .side-drawer.open .drawer-content {
+        display: block;
+        flex: 1;
+        overflow-y: auto;
+        order: 1;
+    }
+
+
+    /* --- WeekNav: fade when idle, show on interaction --- */
+    .week-nav {
+        left: 4px;
+        opacity: 0;
+        transition: opacity 0.4s ease;
+    }
+
+    .week-nav.visible,
+    .week-nav.expanded {
+        opacity: 1;
+    }
+
+    .week-nav-lines {
+        gap: 6px;
+    }
+
+    .nav-line {
+        width: 12px;
+    }
+
+    /* --- Task cards: truncate titles, disable hover effects --- */
+    .task-title {
+        display: block;
+        /* Override display:inline so text-overflow:ellipsis works */
+    }
+
+    .task-notes {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .task-content {
+        overflow: hidden;
+    }
+
+    .task-card:hover {
+        box-shadow: none;
+        transform: none;
+    }
+
+    /* --- Touch-friendly drag handle --- */
+    .drag-handle {
+        padding: 4px;
+    }
 }

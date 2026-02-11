@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useTaskStore } from '../store/store';
 import { getWeekKey, getFirstDayOfWeek } from '../utils/timeUtils';
 import dayjs from 'dayjs';
@@ -15,6 +15,33 @@ export const WeekNav: React.FC<WeekNavProps> = ({ onNavigate, currentVisibleWeek
     const [isExpanded, setIsExpanded] = useState(false);
     const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
     const [targetWeek, setTargetWeek] = useState<string | null>(null); // Overrides during scroll
+    const [mobileVisible, setMobileVisible] = useState(false);
+    const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Mobile auto-show on scroll, auto-hide after 2s idle
+    useEffect(() => {
+        const isMobile = window.matchMedia('(max-width: 768px)').matches;
+        if (!isMobile) return;
+
+        const container = document.querySelector('.tasks-main');
+        if (!container) return;
+
+        const showTemporarily = () => {
+            setMobileVisible(true);
+            if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+            hideTimerRef.current = setTimeout(() => setMobileVisible(false), 2000);
+        };
+
+        container.addEventListener('scroll', showTemporarily, { passive: true });
+        container.addEventListener('touchstart', showTemporarily, { passive: true });
+
+        return () => {
+            container.removeEventListener('scroll', showTemporarily);
+            container.removeEventListener('touchstart', showTemporarily);
+            if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+        };
+    }, []);
+
 
     // Generate months from present to 12 months out
     const months = useMemo(() => {
@@ -120,7 +147,7 @@ export const WeekNav: React.FC<WeekNavProps> = ({ onNavigate, currentVisibleWeek
     };
 
     return (
-        <div className={`week-nav ${isExpanded ? 'expanded' : ''}`}>
+        <div className={`week-nav ${isExpanded ? 'expanded' : ''} ${mobileVisible ? 'visible' : ''}`}>
             {/* Subtle lines (always visible) - click to toggle */}
             <div className="week-nav-lines" onClick={togglePanel}>
                 {months.map((month) => (

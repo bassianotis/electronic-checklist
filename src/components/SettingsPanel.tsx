@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTaskStore } from '../store/store';
 import { useTheme } from '../context/ThemeContext';
 import { useAuthStore } from '../store/authStore';
+import { usePermissionsStore } from '../store/permissionsStore';
+import { useViewAsUser } from '../hooks/useViewAsUser';
 import { formatDate } from '../utils/timeUtils';
 
 interface SettingsPanelProps {
@@ -25,8 +27,25 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen: _isOpen, o
         getPresentWeek
     } = useTaskStore();
     const { theme, setTheme } = useTheme();
-    const { logout } = useAuthStore();
+    const { user, logout } = useAuthStore();
+    const { granted, received, fetchPermissions, grantPermission, revokePermission, isLoading: permissionsLoading } = usePermissionsStore();
+    const { switchToUser, activeUserId, activeUsername, isReadOnly } = useViewAsUser();
     const presentWeek = getPresentWeek();
+
+    // Compute available accounts from permissions
+    const availableAccounts = [
+        { userId: user?.id || null, username: user?.username || 'My Account', isOwn: true },
+        ...received.map(p => ({ userId: p.ownerUserId!, username: p.ownerUsername!, isOwn: false }))
+    ];
+    const hasMultipleAccounts = availableAccounts.length > 1;
+
+    const [newViewerUsername, setNewViewerUsername] = useState('');
+    const [showGrantForm, setShowGrantForm] = useState(false);
+
+    // Fetch permissions on mount
+    useEffect(() => {
+        fetchPermissions();
+    }, [fetchPermissions]);
 
     const handleAdvance = (days: number) => {
         if (!isTimeFrozen) toggleTimeFreeze();
@@ -122,12 +141,138 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen: _isOpen, o
         }
     };
 
+    const handleGrantAccess = async () => {
+        if (!newViewerUsername.trim()) return;
+        const success = await grantPermission(newViewerUsername.trim());
+        if (success) {
+            setNewViewerUsername('');
+            setShowGrantForm(false);
+        }
+    };
+
+    const handleRevokeAccess = async (permissionId: number) => {
+        if (confirm('Are you sure you want to revoke this access?')) {
+            await revokePermission(permissionId);
+        }
+    };
+
     return (
         <div className="side-panel-container">
             <div className="panel-header">
                 <h2>Settings</h2>
             </div>
             <div className="panel-content">
+
+                {/* Account Switcher Section - First/Most Prominent */}
+                {hasMultipleAccounts && (
+                    <>
+                        <div className="settings-section">
+                            <h3>Viewing As</h3>
+                            <div className="account-switcher">
+                                <select
+                                    value={activeUserId || 'own'}
+                                    onChange={(e) => {
+                                        const value = e.target.value;
+                                        switchToUser(value === 'own' ? null : parseInt(value, 10));
+                                    }}
+                                    className="account-select"
+                                >
+                                    {availableAccounts.map(acc => (
+                                        <option key={acc.userId || 'own'} value={acc.userId || 'own'}>
+                                            {acc.isOwn ? `My Tasks (${acc.username})` : `${acc.username}'s Tasks`}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            {isReadOnly && (
+                                <div className="read-only-badge">
+                                    🔒 Read-Only Mode
+                                </div>
+                            )}
+                            <p className="settings-help-text">
+                                {isReadOnly
+                                    ? `You are viewing ${activeUsername}'s tasks. You cannot make changes.`
+                                    : 'You are viewing your own tasks.'
+                                }
+                            </p>
+                        </div>
+                        <hr className="settings-divider" />
+                    </>
+                )}
+
+                {/* Sharing Section - Second Section */}
+                <div className="settings-section">
+                    <h3>Sharing</h3>
+
+                    {/* Grant Access */}
+                    <div style={{ marginBottom: '16px' }}>
+                        <button
+                            className="action-btn backup-btn"
+                            onClick={() => setShowGrantForm(!showGrantForm)}
+                        >
+                            ➕ Grant Access
+                        </button>
+
+                        {showGrantForm && (
+                            <div className="grant-form">
+                                <input
+                                    type="text"
+                                    placeholder="Enter username"
+                                    value={newViewerUsername}
+                                    onChange={(e) => setNewViewerUsername(e.target.value)}
+                                    className="username-input"
+                                    onKeyDown={(e) => e.key === 'Enter' && handleGrantAccess()}
+                                />
+                                <div className="grant-form-actions">
+                                    <button
+                                        className="action-btn-sm primary-btn"
+                                        onClick={handleGrantAccess}
+                                        disabled={permissionsLoading}
+                                    >
+                                        Grant
+                                    </button>
+                                    <button
+                                        className="action-btn-sm"
+                                        onClick={() => {
+                                            setShowGrantForm(false);
+                                            setNewViewerUsername('');
+                                        }}
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Granted Permissions List */}
+                    {granted.length > 0 && (
+                        <div className="permissions-list">
+                            <label className="permissions-label">Who can see my tasks:</label>
+                            {granted.map(perm => (
+                                <div key={perm.id} className="permission-item">
+                                    <span className="permission-username">{perm.viewerUsername}</span>
+                                    <button
+                                        className="revoke-btn"
+                                        onClick={() => handleRevokeAccess(perm.id!)}
+                                        title="Revoke access"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+
+                    {granted.length === 0 && received.length === 0 && (
+                        <p className="settings-help-text">
+                            No sharing enabled. Grant access to let others view your tasks.
+                        </p>
+                    )}
+                </div>
+
+                <hr className="settings-divider" />
 
                 {/* Time Travel Section */}
                 <div className="settings-section">
@@ -339,6 +484,141 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen: _isOpen, o
                     color: var(--text-muted);
                     margin-top: 8px;
                     line-height: 1.4;
+                }
+
+                /* Account Switcher Styles */
+                .account-switcher {
+                    margin-bottom: 12px;
+                }
+                .account-select {
+                    width: 100%;
+                    padding: 10px;
+                    background: var(--bg-secondary);
+                    border: 2px solid var(--border-medium);
+                    border-radius: var(--radius-sm);
+                    color: var(--text-primary);
+                    font-size: 0.95rem;
+                    font-weight: 500;
+                }
+                .account-select:focus {
+                    outline: none;
+                    border-color: #3b82f6;
+                }
+                .read-only-badge {
+                    display: inline-block;
+                    padding: 6px 12px;
+                    background: #fef3c7;
+                    border: 1px solid #fbbf24;
+                    border-radius: var(--radius-sm);
+                    font-size: 0.8rem;
+                    font-weight: 500;
+                    color: #92400e;
+                    margin-bottom: 8px;
+                }
+
+                /* Sharing Styles */
+                .grant-form {
+                    margin-top: 12px;
+                    padding: 12px;
+                    background: var(--bg-secondary);
+                    border-radius: var(--radius-sm);
+                    border: 1px solid var(--border-light);
+                }
+                .username-input {
+                    width: 100%;
+                    padding: 8px;
+                    border: 1px solid var(--border-medium);
+                    border-radius: var(--radius-sm);
+                    background: var(--bg-root);
+                    color: var(--text-primary);
+                    margin-bottom: 8px;
+                }
+                .grant-form-actions {
+                    display: flex;
+                    gap: 8px;
+                }
+                .action-btn-sm {
+                    flex: 1;
+                    padding: 6px 12px;
+                    border-radius: var(--radius-sm);
+                    font-size: 0.85rem;
+                    cursor: pointer;
+                    background: var(--bg-secondary);
+                    border: 1px solid var(--border-medium);
+                    color: var(--text-primary);
+                }
+                .action-btn-sm:hover {
+                    background: var(--bg-hover);
+                }
+                .action-btn-sm.primary-btn {
+                    background: #3b82f6;
+                    color: white;
+                    border-color: #2563eb;
+                }
+                .action-btn-sm.primary-btn:hover {
+                    background: #2563eb;
+                }
+                .action-btn-sm:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                }
+                .permissions-list {
+                    margin-top: 16px;
+                }
+                .permissions-label {
+                    display: block;
+                    font-size: 0.8rem;
+                    color: var(--text-secondary);
+                    margin-bottom: 8px;
+                    font-weight: 500;
+                }
+                .permission-item {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 8px 12px;
+                    background: var(--bg-secondary);
+                    border: 1px solid var(--border-light);
+                    border-radius: var(--radius-sm);
+                    margin-bottom: 8px;
+                }
+                .permission-username {
+                    font-size: 0.9rem;
+                    color: var(--text-primary);
+                    font-weight: 500;
+                }
+                .revoke-btn {
+                    padding: 4px 8px;
+                    background: #fee2e2;
+                    border: 1px solid #fca5a5;
+                    color: #dc2626;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 0.85rem;
+                }
+                .revoke-btn:hover {
+                    background: #fecaca;
+                }
+                .permissions-info {
+                    margin-top: 16px;
+                    padding: 12px;
+                    background: var(--bg-secondary);
+                    border-radius: var(--radius-sm);
+                    border: 1px solid var(--border-light);
+                }
+                .permissions-list-simple {
+                    list-style: none;
+                    padding: 0;
+                    margin: 8px 0 0 0;
+                }
+                .permissions-list-simple li {
+                    padding: 4px 0;
+                    font-size: 0.9rem;
+                    color: var(--text-primary);
+                }
+                .permissions-list-simple li:before {
+                    content: "👤 ";
+                    margin-right: 6px;
                 }
             `}</style>
         </div >

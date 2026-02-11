@@ -23,6 +23,8 @@ interface WeekSectionProps {
     routineMap: Map<string, Routine>;
     presentWeek: WeekKey;
     currentTime: string;
+    isReadOnly?: boolean;
+    weekNotes: any[];
     onSetEditingAt: (val: { week: WeekKey; orderIndex: number } | null) => void;
     onSetHoveringAt: (val: { week: WeekKey; orderIndex: number } | null) => void;
     presentWeekRef: React.RefObject<HTMLDivElement | null>;
@@ -46,6 +48,8 @@ export const WeekSection: React.FC<WeekSectionProps> = ({
     routineMap,
     presentWeek,
     currentTime,
+    isReadOnly = false,
+    weekNotes: passedWeekNotes,
     onSetEditingAt,
     onSetHoveringAt,
     presentWeekRef,
@@ -61,8 +65,9 @@ export const WeekSection: React.FC<WeekSectionProps> = ({
         id: week
     });
 
-    // Get week notes for this week - select raw array and memoize the filter
-    const allWeekNotes = useTaskStore((s) => s.weekNotes);
+    // Get week notes for this week - use passed weekNotes or get from store
+    const storeWeekNotes = useTaskStore((s) => s.weekNotes);
+    const allWeekNotes = passedWeekNotes || storeWeekNotes;
     const weekNotes = useMemo(() =>
         allWeekNotes
             .filter((note) => note.week === week && !note.deletedAt)
@@ -89,6 +94,7 @@ export const WeekSection: React.FC<WeekSectionProps> = ({
     const maxDate = weekEnd.format('YYYY-MM-DD');
 
     const handleStartCreating = () => {
+        if (isReadOnly) return; // Disable in read-only mode
         // Default to today if within week, otherwise start of week
         const today = dayjs();
         let defaultDate = minDate;
@@ -139,9 +145,9 @@ export const WeekSection: React.FC<WeekSectionProps> = ({
                     </div>
                     <div
                         className="week-date-label clickable"
-                        onClick={handleStartCreating}
-                        style={{ cursor: 'pointer' }}
-                        title="Click to add event"
+                        onClick={isReadOnly ? undefined : handleStartCreating}
+                        style={{ cursor: isReadOnly ? 'default' : 'pointer' }}
+                        title={isReadOnly ? '' : 'Click to add event'}
                     >
                         {weekDateLabel}
                     </div>
@@ -150,9 +156,9 @@ export const WeekSection: React.FC<WeekSectionProps> = ({
             {showCombinedMonthDate && (
                 <div
                     className="section-header month-header clickable"
-                    onClick={handleStartCreating}
-                    style={{ cursor: 'pointer' }}
-                    title="Click to add event"
+                    onClick={isReadOnly ? undefined : handleStartCreating}
+                    style={{ cursor: isReadOnly ? 'default' : 'pointer' }}
+                    title={isReadOnly ? '' : 'Click to add event'}
                 >
                     {combinedMonthDateLabel}
                 </div>
@@ -160,9 +166,9 @@ export const WeekSection: React.FC<WeekSectionProps> = ({
             {!showHeader && (
                 <div
                     className="week-date-label standalone clickable"
-                    onClick={handleStartCreating}
-                    style={{ cursor: 'pointer' }}
-                    title="Click to add event"
+                    onClick={isReadOnly ? undefined : handleStartCreating}
+                    style={{ cursor: isReadOnly ? 'default' : 'pointer' }}
+                    title={isReadOnly ? '' : 'Click to add event'}
                 >
                     {weekDateLabel}
                 </div>
@@ -170,8 +176,8 @@ export const WeekSection: React.FC<WeekSectionProps> = ({
 
             {/* Week Notes Section */}
             <div className="week-notes-container">
-                {/* Inline Event Creator */}
-                {isCreatingEvent && (
+                {/* Inline Event Creator - only show if not read-only */}
+                {!isReadOnly && isCreatingEvent && (
                     <div
                         className="week-note-card inline-event-creator"
                         style={{
@@ -242,7 +248,7 @@ export const WeekSection: React.FC<WeekSectionProps> = ({
                 )}
 
                 {weekNotes.map((note) => (
-                    <WeekNoteCard key={note.id} note={note} />
+                    <WeekNoteCard key={note.id} note={note} isReadOnly={isReadOnly} />
                 ))}
             </div>
 
@@ -256,14 +262,14 @@ export const WeekSection: React.FC<WeekSectionProps> = ({
                     <div>
                         {projectedItems.map((item) => (
                             <React.Fragment key={item.id ?? 'spacer-fragment'}>
-                                {!item.isSpacer && editingAt?.week === week && editingAt?.orderIndex === item.orderIndex ? (
+                                {!isReadOnly && !item.isSpacer && editingAt?.week === week && editingAt?.orderIndex === item.orderIndex ? (
                                     <InlineTaskEditor
                                         week={week}
                                         orderIndex={item.orderIndex}
                                         onComplete={() => onSetEditingAt(null)}
                                         onCancel={() => onSetEditingAt(null)}
                                     />
-                                ) : !item.isSpacer && (
+                                ) : !isReadOnly && !item.isSpacer && (
                                     <div
                                         className={`insertion-point ${hoveringAt?.week === week && hoveringAt?.orderIndex === item.orderIndex ? 'visible' : ''}`}
                                         onMouseEnter={() => onSetHoveringAt({ week, orderIndex: item.orderIndex })}
@@ -280,18 +286,19 @@ export const WeekSection: React.FC<WeekSectionProps> = ({
                                     presentWeek={presentWeek}
                                     currentTime={currentTime}
                                     isSpacer={item.isSpacer}
+                                    isReadOnly={isReadOnly}
                                 />
                             </React.Fragment>
                         ))}
 
-                        {editingAt?.week === week && editingAt?.orderIndex === weekItems.length && !weekItems.some(i => i.orderIndex === editingAt?.orderIndex) ? (
+                        {!isReadOnly && editingAt?.week === week && editingAt?.orderIndex === weekItems.length && !weekItems.some(i => i.orderIndex === editingAt?.orderIndex) ? (
                             <InlineTaskEditor
                                 week={week}
                                 orderIndex={weekItems.length}
                                 onComplete={() => onSetEditingAt(null)}
                                 onCancel={() => onSetEditingAt(null)}
                             />
-                        ) : (
+                        ) : !isReadOnly ? (
                             weekItems.length === 0 ? (
                                 <button
                                     className="empty-week-add-btn"
@@ -309,7 +316,7 @@ export const WeekSection: React.FC<WeekSectionProps> = ({
                                     <span className="insertion-plus">+</span>
                                 </div>
                             )
-                        )}
+                        ) : null}
                     </div>
                 </div>
             </SortableContext>

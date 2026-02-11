@@ -7,6 +7,7 @@ import { SyncIndicator } from './components/SyncIndicator';
 import { AuthScreen } from './components/AuthScreen';
 import { useTaskStore } from './store/store';
 import { useAuthStore } from './store/authStore';
+import { useViewAsUser } from './hooks/useViewAsUser';
 import { ThemeProvider } from './context/ThemeContext';
 import './index.css';
 
@@ -136,6 +137,9 @@ const App: React.FC = () => {
         if (isAuthenticated) {
             // Initial hydrate
             hydrateFromApi();
+
+            // Restore viewed account from localStorage
+            useViewAsUser.getState().restoreSession();
 
             // Poll for data updates every 30 seconds
             const interval = setInterval(() => {

@@ -45,4 +45,8 @@ db.exec(`
   );
 `);
 
+// Run migrations
+import { runMigrations } from './migrations';
+runMigrations(db);
+
 export default db;

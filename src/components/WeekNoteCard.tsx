@@ -2,12 +2,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import dayjs from 'dayjs';
 import type { WeekNote as WeekNoteType } from '../types';
 import { useTaskStore } from '../store/store';
+import { getWeekKey } from '../utils/timeUtils';
 
 interface WeekNoteCardProps {
     note: WeekNoteType;
+    isReadOnly?: boolean;
 }
 
-export const WeekNoteCard: React.FC<WeekNoteCardProps> = ({ note }) => {
+export const WeekNoteCard: React.FC<WeekNoteCardProps> = ({ note, isReadOnly = false }) => {
     const updateWeekNote = useTaskStore((s) => s.updateWeekNote);
     const deleteWeekNote = useTaskStore((s) => s.deleteWeekNote);
     const updateCollectionItem = useTaskStore((s) => s.updateCollectionItem);
@@ -71,7 +73,9 @@ export const WeekNoteCard: React.FC<WeekNoteCardProps> = ({ note }) => {
         updateWeekNote(note.id, {
             title: trimmedTitle,
             dateISO: trimmedDate,
-            notes: trimmedNotes
+            notes: trimmedNotes,
+            // If date changed, move to the correct week
+            ...(trimmedDate ? { week: getWeekKey(trimmedDate) } : {}),
         });
         setIsEditing(false);
     };
@@ -122,8 +126,8 @@ export const WeekNoteCard: React.FC<WeekNoteCardProps> = ({ note }) => {
         <div
             ref={cardRef}
             className={`week-note-card ${isEditing ? 'editing' : ''}`}
-            onClick={() => !isEditing && setIsEditing(true)}
-            style={{ position: 'relative' }} // For absolute positioning of delete button
+            onClick={() => !isEditing && !isReadOnly && setIsEditing(true)}
+            style={{ position: 'relative', cursor: isReadOnly ? 'default' : 'pointer' }}
         >
             <div className="week-note-content">
                 {isEditing ? (

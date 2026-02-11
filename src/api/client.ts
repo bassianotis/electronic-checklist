@@ -90,5 +90,26 @@ export const api = {
     clearData: () =>
         request<{ success: boolean; newVersion: number }>('/data', {
             method: 'DELETE'
-        })
+        }),
+
+    // Permission endpoints
+    grantPermission: (viewerUsername: string) =>
+        request<{ success: boolean; permission: any }>('/permissions', {
+            method: 'POST',
+            body: JSON.stringify({ viewerUsername, permissionLevel: 'read' })
+        }),
+
+    getGrantedPermissions: () =>
+        request<{ permissions: any[] }>('/permissions/granted'),
+
+    getReceivedPermissions: () =>
+        request<{ permissions: any[] }>('/permissions/received'),
+
+    revokePermission: (permissionId: number) =>
+        request<{ success: boolean }>(`/permissions/${permissionId}`, {
+            method: 'DELETE'
+        }),
+
+    fetchUserData: (userId: number) =>
+        request<{ data: any; version: number; ownerUsername: string }>(`/data/${userId}`)
 };
