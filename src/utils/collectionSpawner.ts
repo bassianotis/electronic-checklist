@@ -17,7 +17,8 @@ function getWeekInMonth(date: dayjs.Dayjs): number {
         return 1;
     }
 
-    const weekNum = Math.floor(date.diff(firstSunday, 'day') / 7) + (firstOfMonth.day() === 0 ? 1 : 2);
+    // Always count from the first Sunday: first Sunday = 1, second = 2, etc.
+    const weekNum = Math.floor(date.diff(firstSunday, 'day') / 7) + 1;
     return weekNum;
 }
 
