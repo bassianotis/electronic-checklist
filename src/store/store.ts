@@ -768,43 +768,52 @@ export const useTaskStore = create<TaskStore>()(
                 set((state) => {
                     const presentWeek = getWeekKey(state.currentTime);
 
-                    // Pass 1: Move incomplete manual tasks from past weeks into the Queue (Other).
-                    // They are not auto-scheduled into the new week — the user re-prioritizes them by
-                    // dragging from the Queue. Routine-linked items are handled in Pass 2.
-                    // New arrivals get orderIndex values below the current minimum so they pin to the
-                    // top of the Ideas list, preserving relative order among themselves.
-                    const existingIdeaMinOrder = state.items
-                        .filter(i => !i.archived && !i.deletedAt && i.week === IDEAS_WEEK_KEY)
+                    // Universal carry-over (brainstorm Q20): every incomplete
+                    // task in a past week — routine-attached or manual —
+                    // moves into the present week. State (completedCount,
+                    // minutes, notes, targetCount) is preserved untouched.
+                    // Carry is indefinite; users delete tasks they want gone.
+                    const carryItems = state.items
+                        .filter(item => {
+                            if (item.deletedAt) return false;
+                            if (item.archived) return false;
+                            if (item.status === 'complete') return false;
+                            if (item.week === IDEAS_WEEK_KEY) return false;
+                            return compareWeekKeys(item.week, presentWeek) < 0;
+                        })
+                        .sort((a, b) => {
+                            const cmp = compareWeekKeys(a.week, b.week);
+                            if (cmp !== 0) return cmp;
+                            return a.orderIndex - b.orderIndex;
+                        });
+
+                    if (carryItems.length === 0) return state;
+
+                    // Pin migrated items above existing present-week items so
+                    // missed work is the first thing the user sees.
+                    const presentMinOrder = state.items
+                        .filter(i => !i.archived && !i.deletedAt && i.week === presentWeek)
                         .reduce((min, i) => Math.min(min, i.orderIndex), 0);
-                    let nextTopOrderIndex = existingIdeaMinOrder - 1;
-                    const afterRollover = state.items.map(item => {
-                        if (item.deletedAt) return item;
-                        if (item.week === IDEAS_WEEK_KEY) return item;
-                        if (compareWeekKeys(item.week, presentWeek) >= 0) return item;
-                        if (item.status === 'complete' || item.archived) return item;
-                        if (item.routineId) return item;
-                        const orderIndex = nextTopOrderIndex--;
+                    let nextOrder = presentMinOrder - carryItems.length;
+
+                    const newOrderById = new Map<string, number>();
+                    for (const item of carryItems) {
+                        newOrderById.set(item.id, nextOrder++);
+                    }
+
+                    const updatedItems = state.items.map(item => {
+                        const order = newOrderById.get(item.id);
+                        if (order === undefined) return item;
                         return {
                             ...item,
-                            week: IDEAS_WEEK_KEY,
+                            week: presentWeek,
                             originalWeek: item.originalWeek || item.week,
-                            orderIndex,
-                            updatedAt: nowTs
+                            orderIndex: order,
+                            updatedAt: nowTs,
                         };
                     });
 
-                    // Pass 2: Remove past-week incomplete routine-linked items.
-                    // These are no longer carried forward — they re-appear as proposals.
-                    const cleanedItems = afterRollover.filter(item => {
-                        if (!item.routineId) return true;
-                        if (item.deletedAt) return true;
-                        if (item.status === 'complete') return true;
-                        if (item.week === IDEAS_WEEK_KEY) return true;
-                        // Remove incomplete routine tasks that belong to past weeks
-                        return compareWeekKeys(item.week, presentWeek) >= 0;
-                    });
-
-                    return { items: cleanedItems };
+                    return { items: updatedItems };
                 });
                 triggerSync();
             },
