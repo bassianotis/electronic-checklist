@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Item, Routine, WeekKey, AppState, Collection, CollectionItem, WeekNote } from '../types';
 import { IDEAS_WEEK_KEY } from '../types';
+import { PROPOSALS_CONTAINER_KEY } from '../utils/proposalUtils';
 // Default "now" time - January 13, 2026 at noon (Maintenance of original dev time)
 const DEFAULT_NOW = '2026-01-13T12:00:00.000Z';
 
@@ -13,7 +14,6 @@ import {
 } from '../utils/timeUtils';
 import {
     getVisibleWeeks,
-    spawnTasksForRoutine,
     updateRoutineTasks,
     removeOutdatedRoutineTasks
 } from '../utils/routineSpawner';
@@ -44,7 +44,11 @@ interface TaskStore extends AppState {
     deleteRoutine: (id: string, removeRelatedTasks: boolean) => void;
     addRoutine: (routine: Omit<Routine, 'id'>) => string;
     updateRoutine: (id: string, updates: Partial<Routine>, overwriteModifiedNotes?: boolean) => void;
-    spawnRoutineTasks: () => void;
+    runRoutineProposalsMigrationV1: () => void;
+    runRoutineProposalsMigrationV2: () => void;
+    acceptProposal: (routineId: string, week: WeekKey, insertIndex?: number, stageForDrag?: boolean) => void;
+    dismissProposal: (routineId: string) => void;
+    clearDismissals: () => void;
     rolloverPastItems: () => void;
     executeRollover: () => void;
     advanceTime: (days: number) => void;
@@ -223,18 +227,31 @@ export const useTaskStore = create<TaskStore>()(
                 }
 
                 const nowTs = Date.now();
-                set((state) => ({
-                    items: state.items.map((item) =>
-                        item.id === id
-                            ? {
-                                ...item,
-                                status: 'complete' as const,
-                                completedAt: currentTime,
-                                updatedAt: nowTs
-                            }
-                            : item
-                    ),
-                }));
+                set((state) => {
+                    const completedItem = state.items.find(i => i.id === id);
+                    const routineId = completedItem?.routineId;
+
+                    return {
+                        items: state.items.map((i) =>
+                            i.id === id
+                                ? {
+                                    ...i,
+                                    status: 'complete' as const,
+                                    completedAt: currentTime,
+                                    updatedAt: nowTs
+                                }
+                                : i
+                        ),
+                        // Update lastCompletedAt on the associated routine (if any, not deleted)
+                        routines: routineId
+                            ? state.routines.map(r =>
+                                r.id === routineId && !r.deletedAt
+                                    ? { ...r, lastCompletedAt: currentTime }
+                                    : r
+                            )
+                            : state.routines,
+                    };
+                });
                 triggerSync();
             },
 
@@ -289,8 +306,9 @@ export const useTaskStore = create<TaskStore>()(
             incrementProgress: (id: string, minutes: number) => {
                 const { currentTime, triggerSync } = get();
                 const nowTs = Date.now();
-                set((state) => ({
-                    items: state.items.map((item) => {
+                set((state) => {
+                    let completedRoutineId: string | undefined;
+                    const updatedItems = state.items.map((item) => {
                         if (item.id !== id) return item;
 
                         const newMinutes = (item.minutes ?? 0) + minutes;
@@ -299,6 +317,7 @@ export const useTaskStore = create<TaskStore>()(
                         const countMet = !item.targetCount || (item.completedCount ?? 0) >= item.targetCount;
 
                         if (minutesMet && countMet && item.status === 'incomplete') {
+                            completedRoutineId = item.routineId;
                             return {
                                 ...item,
                                 minutes: newMinutes,
@@ -309,16 +328,28 @@ export const useTaskStore = create<TaskStore>()(
                         }
 
                         return { ...item, minutes: newMinutes, updatedAt: nowTs };
-                    }),
-                }));
+                    });
+
+                    return {
+                        items: updatedItems,
+                        routines: completedRoutineId
+                            ? state.routines.map(r =>
+                                r.id === completedRoutineId && !r.deletedAt
+                                    ? { ...r, lastCompletedAt: currentTime }
+                                    : r
+                            )
+                            : state.routines,
+                    };
+                });
                 triggerSync();
             },
 
             incrementOccurrence: (id: string) => {
                 const { currentTime, triggerSync } = get();
                 const nowTs = Date.now();
-                set((state) => ({
-                    items: state.items.map((item) => {
+                set((state) => {
+                    let completedRoutineId: string | undefined;
+                    const updatedItems = state.items.map((item) => {
                         if (item.id !== id) return item;
 
                         const currentCount = item.completedCount ?? 0;
@@ -329,6 +360,7 @@ export const useTaskStore = create<TaskStore>()(
                         const minutesMet = !item.minutesGoal || (item.minutes ?? 0) >= item.minutesGoal;
 
                         if (countMet && minutesMet) {
+                            completedRoutineId = item.routineId;
                             return {
                                 ...item,
                                 completedCount: newCount,
@@ -343,8 +375,19 @@ export const useTaskStore = create<TaskStore>()(
                             completedCount: newCount,
                             updatedAt: nowTs
                         };
-                    }),
-                }));
+                    });
+
+                    return {
+                        items: updatedItems,
+                        routines: completedRoutineId
+                            ? state.routines.map(r =>
+                                r.id === completedRoutineId && !r.deletedAt
+                                    ? { ...r, lastCompletedAt: currentTime }
+                                    : r
+                            )
+                            : state.routines,
+                    };
+                });
                 triggerSync();
             },
 
@@ -551,17 +594,9 @@ export const useTaskStore = create<TaskStore>()(
                 const id = `routine-${nowTs}-${Math.random().toString(36).substr(2, 9)}`;
                 const routine: Routine = { ...routineData, id, updatedAt: nowTs };
 
-                set((state) => {
-                    const newRoutines = [...state.routines, routine];
-                    const visibleWeeks = getVisibleWeeks(state.currentTime);
-                    const newTasks = spawnTasksForRoutine(routine, visibleWeeks, state.items);
-                    const newTasksStamped = newTasks.map(t => ({ ...t, updatedAt: nowTs }));
-
-                    return {
-                        routines: newRoutines,
-                        items: [...state.items, ...newTasksStamped],
-                    };
-                });
+                set((state) => ({
+                    routines: [...state.routines, routine],
+                }));
                 triggerSync();
                 return id;
             },
@@ -597,32 +632,133 @@ export const useTaskStore = create<TaskStore>()(
                         });
                     }
 
-                    const visibleWeeks = getVisibleWeeks(state.currentTime);
-                    const newTasks = spawnTasksForRoutine(updatedRoutine, visibleWeeks, updatedItems);
-                    const newTasksStamped = newTasks.map(t => ({ ...t, updatedAt: nowTs }));
-
                     return {
                         routines: newRoutines,
-                        items: [...updatedItems, ...newTasksStamped],
+                        items: updatedItems,
                     };
                 });
                 triggerSync();
             },
 
-            spawnRoutineTasks: () => {
+            runRoutineProposalsMigrationV1: () => {
+                if (get().routineProposalsMigrationV1Done) return;
                 const { triggerSync } = get();
                 const nowTs = Date.now();
                 set((state) => {
-                    const visibleWeeks = getVisibleWeeks(state.currentTime);
-                    let allItems = [...state.items];
-                    for (const routine of state.routines) {
-                        if (routine.deletedAt) continue;
-                        const newTasks = spawnTasksForRoutine(routine, visibleWeeks, allItems);
-                        const newTasksStamped = newTasks.map(t => ({ ...t, updatedAt: nowTs }));
-                        allItems = [...allItems, ...newTasksStamped];
-                    }
-                    return { items: allItems };
+                    const presentWeek = getWeekKey(state.currentTime);
+                    // Remove all incomplete routine-linked tasks in past weeks
+                    const cleanedItems = state.items.filter(item => {
+                        if (!item.routineId) return true;
+                        if (item.deletedAt) return true;
+                        if (item.status === 'complete') return true;
+                        if (item.week === IDEAS_WEEK_KEY) return true;
+                        return compareWeekKeys(item.week, presentWeek) >= 0;
+                    });
+                    return { items: cleanedItems, routineProposalsMigrationV1Done: true, updatedAt: nowTs };
                 });
+                triggerSync();
+            },
+
+            // Clears all pre-existing incomplete routine tasks in the current and future weeks.
+            // Before the proposal model, routines auto-spawned tasks into all 12 visible months.
+            // Those stale items block computeProposals from surfacing routines that already have
+            // a task in the present/next week window. Completed tasks are preserved for history.
+            runRoutineProposalsMigrationV2: () => {
+                if (get().routineProposalsMigrationV2Done) return;
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => {
+                    const cleanedItems = state.items.filter(item => {
+                        if (!item.routineId) return true;
+                        if (item.deletedAt) return true;
+                        if (item.status === 'complete') return true;
+                        if (item.week === IDEAS_WEEK_KEY) return true;
+                        // Drop every remaining incomplete routine task, regardless of week.
+                        return false;
+                    });
+                    return { items: cleanedItems, routineProposalsMigrationV2Done: true, updatedAt: nowTs };
+                });
+                triggerSync();
+            },
+
+            acceptProposal: (routineId: string, week: WeekKey, insertIndex?: number, stageForDrag?: boolean) => {
+                const { triggerSync, reorderItem } = get();
+                const nowTs = Date.now();
+
+                const routine = get().routines.find(r => r.id === routineId && !r.deletedAt);
+                if (!routine) return;
+
+                const taskId = `${routineId}-${week}`;
+                const existing = get().items.find(i => i.id === taskId);
+                // Already alive — nothing to do. If it was soft-deleted in a prior
+                // session, resurrect it in place rather than bailing, otherwise
+                // the proposal drag would never materialise a task.
+                if (existing && !existing.deletedAt) return;
+
+                // stageForDrag: park the task in the sidebar sentinel so the
+                // timeline isn't shifted until the user's drag cursor reaches
+                // a real week — mirrors how an Ideas card only enters the
+                // timeline on hover, not at drag start.
+                const storedWeek = stageForDrag ? PROPOSALS_CONTAINER_KEY : week;
+
+                const task: Item = {
+                    id: taskId,
+                    title: routine.title,
+                    routineId: routine.id,
+                    week: storedWeek,
+                    status: 'incomplete',
+                    orderIndex: 999999,
+                    notes: routine.notes,
+                    inheritedNotes: routine.notes,
+                    updatedAt: nowTs,
+                };
+
+                if (routine.taskType === 'time-tracked' && routine.minutesGoal) {
+                    task.minutesGoal = routine.minutesGoal;
+                    task.minutes = 0;
+                } else if (routine.taskType === 'multi-occurrence' && routine.targetCount) {
+                    task.targetCount = routine.targetCount;
+                    task.completedCount = 0;
+                }
+
+                set((state) => ({
+                    items: existing
+                        ? state.items.map(i => i.id === taskId ? task : i)
+                        : [...state.items, task],
+                }));
+
+                if (insertIndex !== undefined && !stageForDrag) {
+                    reorderItem(taskId, insertIndex, week);
+                }
+
+                triggerSync();
+            },
+
+            dismissProposal: (routineId: string) => {
+                const { triggerSync } = get();
+                const dismissedAt = get().currentTime;
+                set((state) => ({
+                    routines: state.routines.map(r =>
+                        r.id === routineId && !r.deletedAt
+                            ? { ...r, dismissedAt, updatedAt: Date.now() }
+                            : r
+                    ),
+                }));
+                triggerSync();
+            },
+
+            clearDismissals: () => {
+                const { triggerSync } = get();
+                const presentWk = getWeekKey(get().currentTime);
+                const nowTs = Date.now();
+                set((state) => ({
+                    routines: state.routines.map(r => {
+                        if (!r.dismissedAt) return r;
+                        if (getWeekKey(r.dismissedAt) !== presentWk) return r;
+                        const { dismissedAt: _drop, ...rest } = r;
+                        return { ...rest, updatedAt: nowTs };
+                    }),
+                }));
                 triggerSync();
             },
 
@@ -631,19 +767,44 @@ export const useTaskStore = create<TaskStore>()(
                 const nowTs = Date.now();
                 set((state) => {
                     const presentWeek = getWeekKey(state.currentTime);
-                    const updatedItems = state.items.map(item => {
+
+                    // Pass 1: Move incomplete manual tasks from past weeks into the Queue (Other).
+                    // They are not auto-scheduled into the new week — the user re-prioritizes them by
+                    // dragging from the Queue. Routine-linked items are handled in Pass 2.
+                    // New arrivals get orderIndex values below the current minimum so they pin to the
+                    // top of the Ideas list, preserving relative order among themselves.
+                    const existingIdeaMinOrder = state.items
+                        .filter(i => !i.archived && !i.deletedAt && i.week === IDEAS_WEEK_KEY)
+                        .reduce((min, i) => Math.min(min, i.orderIndex), 0);
+                    let nextTopOrderIndex = existingIdeaMinOrder - 1;
+                    const afterRollover = state.items.map(item => {
                         if (item.deletedAt) return item;
                         if (item.week === IDEAS_WEEK_KEY) return item;
                         if (compareWeekKeys(item.week, presentWeek) >= 0) return item;
                         if (item.status === 'complete' || item.archived) return item;
+                        if (item.routineId) return item;
+                        const orderIndex = nextTopOrderIndex--;
                         return {
                             ...item,
-                            week: presentWeek,
+                            week: IDEAS_WEEK_KEY,
                             originalWeek: item.originalWeek || item.week,
+                            orderIndex,
                             updatedAt: nowTs
                         };
                     });
-                    return { items: updatedItems };
+
+                    // Pass 2: Remove past-week incomplete routine-linked items.
+                    // These are no longer carried forward — they re-appear as proposals.
+                    const cleanedItems = afterRollover.filter(item => {
+                        if (!item.routineId) return true;
+                        if (item.deletedAt) return true;
+                        if (item.status === 'complete') return true;
+                        if (item.week === IDEAS_WEEK_KEY) return true;
+                        // Remove incomplete routine tasks that belong to past weeks
+                        return compareWeekKeys(item.week, presentWeek) >= 0;
+                    });
+
+                    return { items: cleanedItems };
                 });
                 triggerSync();
             },
@@ -673,7 +834,6 @@ export const useTaskStore = create<TaskStore>()(
                     currentTime: dayjs(state.currentTime).add(days, 'day').toISOString(),
                 }));
                 get().rolloverPastItems();
-                get().spawnRoutineTasks();  // Spawn routine tasks for new visible weeks
                 get().spawnCollectionNotes();  // Spawn collection notes for new visible weeks
             },
 
@@ -757,7 +917,15 @@ export const useTaskStore = create<TaskStore>()(
             getVisibleItems: () => {
                 const { items } = get();
                 return items
-                    .filter((item) => !item.archived && !item.deletedAt && item.week !== IDEAS_WEEK_KEY)
+                    .filter((item) =>
+                        !item.archived &&
+                        !item.deletedAt &&
+                        item.week !== IDEAS_WEEK_KEY &&
+                        // Staged proposal drags live in the sidebar sentinel.
+                        // They must not appear in timeline sorts — compareWeekKeys
+                        // throws on non-week-key strings.
+                        item.week !== PROPOSALS_CONTAINER_KEY
+                    )
                     .sort((a, b) => {
                         const weekCompare = compareWeekKeys(a.week, b.week);
                         if (weekCompare !== 0) return weekCompare;
@@ -959,7 +1127,9 @@ export const useTaskStore = create<TaskStore>()(
         {
             name: 'task-list-storage',
             partialize: (state) => ({
-                items: state.items,
+                // Never persist staged proposal drags — they're drag-session
+                // transient and would crash compareWeekKeys on rehydrate.
+                items: state.items.filter(i => i.week !== PROPOSALS_CONTAINER_KEY),
                 routines: state.routines,
                 collections: state.collections,
                 collectionItems: state.collectionItems,
@@ -969,6 +1139,10 @@ export const useTaskStore = create<TaskStore>()(
                 userTimezone: state.userTimezone,
                 lastRolledWeek: state.lastRolledWeek,
                 dataVersion: state.dataVersion,
+                // Without these, the destructive migrations re-run on every
+                // refresh and wipe freshly-accepted routine tasks.
+                routineProposalsMigrationV1Done: state.routineProposalsMigrationV1Done,
+                routineProposalsMigrationV2Done: state.routineProposalsMigrationV2Done,
             }),
         }
     )

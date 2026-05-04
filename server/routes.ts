@@ -53,7 +53,7 @@ router.post('/auth/register', rateLimit(60000, 5), async (req: AuthenticatedRequ
         // Auto-login logic
         const token = generateToken({ id: Number(info.lastInsertRowid), username });
 
-        res.cookie('auth_token', token, {
+        res.cookie('tasks_auth_token', token, {
             httpOnly: true,
             secure: process.env.COOKIE_SECURE === 'true',
             sameSite: 'strict',
@@ -88,7 +88,7 @@ router.post('/auth/login', rateLimit(60000, 10), async (req: AuthenticatedReques
 
     const token = generateToken({ id: user.id, username: user.username });
 
-    res.cookie('auth_token', token, {
+    res.cookie('tasks_auth_token', token, {
         httpOnly: true,
         secure: process.env.COOKIE_SECURE === 'true',
         sameSite: 'strict',
@@ -103,7 +103,7 @@ router.get('/auth/me', requireAuth, (req: AuthenticatedRequest, res: Response) =
 });
 
 router.post('/auth/logout', (req, res) => {
-    res.clearCookie('auth_token');
+    res.clearCookie('tasks_auth_token');
     res.json({ success: true });
 });
 

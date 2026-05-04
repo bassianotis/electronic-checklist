@@ -25,7 +25,7 @@ export function rateLimit(windowMs: number, max: number) {
 }
 
 export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    const token = req.cookies.auth_token;
+    const token = req.cookies.tasks_auth_token;
 
     if (!token) {
         res.status(401).json({ error: 'Unauthorized' });
@@ -34,7 +34,7 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
 
     const user = verifyToken(token);
     if (!user) {
-        res.clearCookie('auth_token');
+        res.clearCookie('tasks_auth_token');
         res.status(401).json({ error: 'Invalid token' });
         return;
     }

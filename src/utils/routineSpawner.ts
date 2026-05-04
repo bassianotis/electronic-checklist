@@ -49,7 +49,7 @@ function getWeekInMonth(date: dayjs.Dayjs): number {
 /**
  * Check if a week falls within a seasonal range.
  */
-function isWeekInSeason(weekKey: WeekKey, routine: Routine): boolean {
+export function isWeekInSeason(weekKey: WeekKey, routine: Routine): boolean {
     if (routine.isYearRound) {
         return true;
     }
@@ -93,7 +93,7 @@ function isWeekInSeason(weekKey: WeekKey, routine: Routine): boolean {
 /**
  * Check if a week matches the routine's anchor for the given cadence.
  */
-function matchesCadence(weekKey: WeekKey, routine: Routine): boolean {
+export function matchesCadence(weekKey: WeekKey, routine: Routine): boolean {
     const weekDate = dayjs(getFirstDayOfWeek(weekKey));
     const anchorDate = dayjs(getFirstDayOfWeek(routine.anchorWeek));
 

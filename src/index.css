@@ -220,8 +220,12 @@ button:disabled {
     overflow: hidden;
     text-overflow: ellipsis;
     cursor: text;
-    /* Highlighter underline effect */
-    display: inline;
+    /* inline-block (not inline) so overflow/text-overflow actually apply
+       while preserving the highlighter gradient behavior. max-width caps
+       the title to its flex-content column. */
+    display: inline-block;
+    max-width: 100%;
+    vertical-align: bottom;
     background: linear-gradient(to top,
             rgba(244, 211, 94, 0.45) 0%,
             rgba(244, 211, 94, 0.45) 35%,
@@ -1550,6 +1554,99 @@ button:disabled {
 }
 
 /* .routine-panel-header removed -> .panel-header */
+
+/* ===== Queue Panel (merged proposals + ideas) ===== */
+.queue-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.queue-section {
+    margin-bottom: 16px;
+}
+
+.queue-section__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 4px 6px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 8px;
+}
+
+.queue-section__header h3 {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0;
+}
+
+.queue-section__refill,
+.queue-section__add {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    background: transparent;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-fast);
+}
+
+.queue-section__refill:hover:not(:disabled),
+.queue-section__add:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.queue-section__refill:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.queue-section__body {
+    min-height: 24px;
+}
+
+.queue-section__empty {
+    padding: 12px 8px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+/* Proposal cards reuse .task-card styling. These rules only add the small subtitle
+   text and dismiss button — title, chip, and grip handle styles come from .task-card. */
+.proposal-last-completed {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.proposal-dismiss-btn {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    background: transparent;
+    border-radius: var(--radius-full);
+    transition: all var(--transition-fast);
+    opacity: 0.4;
+}
+
+.task-card.proposal-card:hover .proposal-dismiss-btn {
+    opacity: 0.85;
+}
+
+.proposal-dismiss-btn:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    opacity: 1 !important;
+}
 
 
 .panel-close-btn {

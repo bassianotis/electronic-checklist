@@ -83,25 +83,28 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen: _isOpen, o
 
     const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
+        // Reset input immediately so the same file can be selected again
+        e.target.value = '';
         if (!file) return;
+
+        // Confirm synchronously within the user gesture — otherwise Chrome
+        // suppresses the dialog once we jump into the async FileReader callback.
+        if (!confirm('Import this backup? Your current tasks, routines, collections, and notes will be replaced.')) return;
 
         const reader = new FileReader();
         reader.onload = (event) => {
             try {
                 const data = JSON.parse(event.target?.result as string);
                 if (data.items && Array.isArray(data.items)) {
-                    if (confirm(`Import ${data.items.length} items, ${data.routines?.length || 0} routines, and ${data.collections?.length || 0} collections? This will replace your current data.`)) {
-                        useTaskStore.setState({
-                            items: data.items,
-                            routines: data.routines || [],
-                            collections: data.collections || [],
-                            collectionItems: data.collectionItems || [],
-                            weekNotes: data.weekNotes || [],
-                            dataVersion: (data.meta?.version || 0) + 1
-                        });
-                        useTaskStore.getState().triggerSync();
-                        alert('Import successful!');
-                    }
+                    useTaskStore.setState({
+                        items: data.items,
+                        routines: data.routines || [],
+                        collections: data.collections || [],
+                        collectionItems: data.collectionItems || [],
+                        weekNotes: data.weekNotes || [],
+                        dataVersion: (data.meta?.version || 0) + 1
+                    });
+                    useTaskStore.getState().triggerSync();
                 } else {
                     alert('Invalid backup file format.');
                 }
@@ -110,34 +113,26 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen: _isOpen, o
             }
         };
         reader.readAsText(file);
-        // Reset input so same file can be selected again
-        e.target.value = '';
     };
 
     const handleClearData = async () => {
-        if (confirm('Are you sure you want to delete ALL tasks and routines? This cannot be undone.')) {
-            if (confirm('This will permanently delete everything. Are you really sure?')) {
-                try {
-                    const { api } = await import('../api/client');
-                    const result = await api.clearData();
-
-                    if (result.success) {
-                        // Update local state to match server
-                        useTaskStore.setState({
-                            items: [],
-                            routines: [],
-                            collections: [],
-                            collectionItems: [],
-                            weekNotes: [],
-                            dataVersion: result.newVersion,
-                        });
-                        alert('All data cleared.');
-                    }
-                } catch (err) {
-                    console.error('Clear failed:', err);
-                    alert('Failed to clear data. Please try again.');
-                }
+        if (!confirm('Permanently delete ALL tasks, routines, collections, and notes? This cannot be undone.')) return;
+        try {
+            const { api } = await import('../api/client');
+            const result = await api.clearData();
+            if (result.success) {
+                useTaskStore.setState({
+                    items: [],
+                    routines: [],
+                    collections: [],
+                    collectionItems: [],
+                    weekNotes: [],
+                    dataVersion: result.newVersion,
+                });
             }
+        } catch (err) {
+            console.error('Clear failed:', err);
+            alert('Failed to clear data. Please try again.');
         }
     };
 

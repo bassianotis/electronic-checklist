@@ -1,8 +1,8 @@
 import React from 'react';
 
 interface SideToolkitProps {
-    activePanel: 'archive' | 'routines' | 'ideas' | 'settings' | 'collections' | null;
-    onToggle: (panel: 'archive' | 'routines' | 'ideas' | 'settings' | 'collections') => void;
+    activePanel: 'archive' | 'routines' | 'queue' | 'settings' | 'collections' | null;
+    onToggle: (panel: 'archive' | 'routines' | 'queue' | 'settings' | 'collections') => void;
 }
 
 const CheckListIcon = () => (
@@ -21,10 +21,11 @@ const RoutineIcon = () => (
     </svg>
 );
 
-const LightbulbIcon = () => (
+const LayersIcon = () => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
-        <path d="M9 21h6a2 2 0 0 0 2-2h-10a2 2 0 0 0 2 2z" />
-        <path d="M12 2a7 7 0 0 0-7 7 c0 2.38 1.19 4.47 3 5.74V17a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7z" />
+        <polygon points="12 2 2 7 12 12 22 7 12 2" />
+        <polyline points="2 17 12 22 22 17" />
+        <polyline points="2 12 12 17 22 12" />
     </svg>
 );
 
@@ -50,20 +51,20 @@ export const SideToolkit: React.FC<SideToolkitProps> = ({ activePanel, onToggle 
             {/* Actions Container */}
             <div className={`toolkit-actions ${activePanel ? 'panel-active' : ''}`}>
                 <button
+                    className={`toolkit-btn ${activePanel === 'queue' ? 'active' : ''}`}
+                    aria-label="Queue"
+                    onClick={() => onToggle('queue')}
+                    title="Queue"
+                >
+                    <LayersIcon />
+                </button>
+                <button
                     className={`toolkit-btn ${activePanel === 'routines' ? 'active' : ''}`}
                     aria-label="Manage routines"
                     onClick={() => onToggle('routines')}
-                    title="Routines"
+                    title="Manage routines"
                 >
                     <RoutineIcon />
-                </button>
-                <button
-                    className={`toolkit-btn ${activePanel === 'ideas' ? 'active' : ''}`}
-                    aria-label="Ideas"
-                    onClick={() => onToggle('ideas')}
-                    title="Ideas"
-                >
-                    <LightbulbIcon />
                 </button>
                 <button
                     className={`toolkit-btn ${activePanel === 'archive' ? 'active' : ''}`}

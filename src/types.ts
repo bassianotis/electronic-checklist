@@ -43,6 +43,8 @@ export interface Routine {
     endMonth?: number;         // 1-12, if seasonal
     endWeekInMonth?: number;   // 1-5, if seasonal
     notes?: string;
+    lastCompletedAt?: string;  // ISO timestamp of most recent task completion
+    dismissedAt?: string;      // ISO timestamp of last proposal dismissal (resets cadence clock)
     updatedAt?: number;
     deletedAt?: number;
 }
@@ -130,4 +132,13 @@ export interface AppState {
     userTimezone: string;
     lastRolledWeek?: WeekKey;
     dataVersion: number;
+    routineProposalsMigrationV1Done?: boolean;
+    routineProposalsMigrationV2Done?: boolean;
+}
+
+// A routine that is currently due and eligible to be proposed to the user
+export interface RoutineProposal {
+    routine: Routine;
+    lastCompletedAt: string | null;
+    cadencePctElapsed: number; // e.g. 1.5 = 150% of cadence interval elapsed
 }

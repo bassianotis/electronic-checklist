@@ -14,20 +14,19 @@ import './index.css';
 const TasksPage: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { getPresentWeek, spawnRoutineTasks, rolloverPastItems, spawnCollectionNotes } = useTaskStore();
+    const { getPresentWeek, rolloverPastItems, spawnCollectionNotes } = useTaskStore();
 
     // State
-    const [activePanel, setActivePanel] = useState<'archive' | 'routines' | 'ideas' | 'settings' | 'collections' | null>(null);
+    const [activePanel, setActivePanel] = useState<'archive' | 'routines' | 'queue' | 'settings' | 'collections' | null>(null);
     const [showJumpToToday, setShowJumpToToday] = useState(false);
     const [isAboveWeek, setIsAboveWeek] = useState(false);
     const [currentVisibleWeek, setCurrentVisibleWeek] = useState<string | undefined>(undefined);
 
-    // On load: rollover past incomplete items, then spawn routine tasks and collection notes
+    // On load: rollover past items and spawn collection notes
     useEffect(() => {
         rolloverPastItems();
-        spawnRoutineTasks();
         spawnCollectionNotes();
-    }, [rolloverPastItems, spawnRoutineTasks, spawnCollectionNotes]);
+    }, [rolloverPastItems, spawnCollectionNotes]);
 
     // Handle scroll to week logic
     const scrollToWeek = useCallback((weekKey: string) => {
@@ -86,7 +85,7 @@ const TasksPage: React.FC = () => {
         scrollToWeek(getPresentWeek());
     }, [getPresentWeek, scrollToWeek]);
 
-    const handleTogglePanel = (panel: 'archive' | 'routines' | 'ideas' | 'settings' | 'collections') => {
+    const handleTogglePanel = (panel: 'archive' | 'routines' | 'queue' | 'settings' | 'collections') => {
         setActivePanel(prev => prev === panel ? null : panel);
     };
 
@@ -112,7 +111,7 @@ const TasksPage: React.FC = () => {
 
 const App: React.FC = () => {
     const { isAuthenticated, isLoading, checkAuth } = useAuthStore();
-    const { hydrateFromApi, setTime } = useTaskStore();
+    const { hydrateFromApi, setTime, runRoutineProposalsMigrationV1, runRoutineProposalsMigrationV2 } = useTaskStore();
 
     useEffect(() => {
         checkAuth();
@@ -135,8 +134,11 @@ const App: React.FC = () => {
 
     useEffect(() => {
         if (isAuthenticated) {
-            // Initial hydrate
-            hydrateFromApi();
+            // Initial hydrate, then run one-time migration
+            hydrateFromApi().then(() => {
+                runRoutineProposalsMigrationV1();
+                runRoutineProposalsMigrationV2();
+            });
 
             // Restore viewed account from localStorage
             useViewAsUser.getState().restoreSession();
@@ -147,7 +149,7 @@ const App: React.FC = () => {
             }, 30000);
             return () => clearInterval(interval);
         }
-    }, [isAuthenticated, hydrateFromApi]);
+    }, [isAuthenticated, hydrateFromApi, runRoutineProposalsMigrationV1, runRoutineProposalsMigrationV2]);
 
     if (isLoading) {
         return (

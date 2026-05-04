@@ -975,7 +975,9 @@
     font-size: 0.95rem;
     font-weight: 600;
     color: var(--ink-black);
-    display: inline;
+    display: inline-block;
+    max-width: 100%;
+    vertical-align: bottom;
     background: linear-gradient(to top,
             rgba(244, 211, 94, 0.45) 0%,
             rgba(244, 211, 94, 0.45) 35%,
