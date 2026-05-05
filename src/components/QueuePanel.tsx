@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -128,10 +128,17 @@ export const QueuePanel: React.FC = () => {
 
     const presentWeek = getWeekKey(currentTime);
 
-    const proposals = useMemo(
-        () => computeProposals(routines, items, currentTime),
-        [routines, items, currentTime]
-    );
+    // Snapshot currentTime only when underlying data changes — the global
+    // currentTime ticks every minute (App.tsx) so labels like "Last X ago"
+    // stay fresh, but we don't want the queue to re-rank under the user's
+    // hands on every tick. See brainstorm Q25.
+    const rankingTimeRef = useRef(currentTime);
+    const proposals = useMemo(() => {
+        rankingTimeRef.current = currentTime;
+        return computeProposals(routines, items, rankingTimeRef.current);
+        // currentTime intentionally omitted — see ref pattern above.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [routines, items]);
 
     const ideasItems = getIdeasItems();
 
