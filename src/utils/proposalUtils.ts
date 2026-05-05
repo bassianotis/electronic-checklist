@@ -118,19 +118,10 @@ export function computeProposals(
     currentTime: string
 ): RoutineProposal[] {
     const today = new Date(currentTime);
-    const todayWeek = getWeekKey(currentTime);
     const proposals: RoutineProposal[] = [];
 
     for (const routine of routines) {
         if (routine.deletedAt) continue;
-
-        // Dismissal is being removed in Phase 3 but kept here as a no-op
-        // safety net so the existing "Refill" UX continues to work until
-        // it's stripped.
-        if (
-            routine.dismissedAt &&
-            getWeekKey(routine.dismissedAt) === todayWeek
-        ) continue;
 
         // Display lastCompletedAt: stored value first, else derive from
         // completed task history (legacy data path).

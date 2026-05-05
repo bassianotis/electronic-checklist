@@ -36,6 +36,7 @@ export const ProposalCardVisual: React.FC<{
     const lastCompletedLabel = lastCompletedAt
         ? `Last ${dayjs(lastCompletedAt).fromNow()}`
         : 'Never done';
+    const chipClass = `chip routine${cadence === 'annually' ? ' annual' : ''}`;
     return (
         <div className="task-card proposal-card">
             <div className="drag-handle" aria-hidden="true">
@@ -44,7 +45,7 @@ export const ProposalCardVisual: React.FC<{
             <div className="task-content">
                 <div className="task-title" title={title}>{title}</div>
                 <div className="task-meta">
-                    <span className="chip routine">{cadence}</span>
+                    <span className={chipClass}>{cadence}</span>
                     <span className="proposal-last-completed">{lastCompletedLabel}</span>
                 </div>
             </div>
@@ -61,8 +62,7 @@ export const ProposalCardVisual: React.FC<{
 const ProposalCard: React.FC<{
     proposal: RoutineProposal;
     presentWeek: WeekKey;
-    onDismiss: () => void;
-}> = ({ proposal, presentWeek, onDismiss }) => {
+}> = ({ proposal, presentWeek }) => {
     const { routine, lastCompletedAt } = proposal;
     const futureTaskId = `${routine.id}-${presentWeek}`;
 
@@ -90,6 +90,8 @@ const ProposalCard: React.FC<{
         ? `Last ${dayjs(lastCompletedAt).fromNow()}`
         : 'Never done';
 
+    const chipClass = `chip routine${routine.cadence === 'annually' ? ' annual' : ''}`;
+
     return (
         <div
             ref={setNodeRef}
@@ -112,27 +114,16 @@ const ProposalCard: React.FC<{
                     {routine.title}
                 </div>
                 <div className="task-meta">
-                    <span className="chip routine">{routine.cadence}</span>
+                    <span className={chipClass}>{routine.cadence}</span>
                     <span className="proposal-last-completed">{lastCompletedLabel}</span>
                 </div>
-            </div>
-
-            <div className="task-actions">
-                <button
-                    className="proposal-dismiss-btn"
-                    onClick={(e) => { e.stopPropagation(); onDismiss(); }}
-                    title="Dismiss until next week"
-                    aria-label="Dismiss"
-                >
-                    ✕
-                </button>
             </div>
         </div>
     );
 };
 
 export const QueuePanel: React.FC = () => {
-    const { routines, items, currentTime, dismissProposal, clearDismissals, getIdeasItems } = useTaskStore();
+    const { routines, items, currentTime, getIdeasItems } = useTaskStore();
     const [isAdding, setIsAdding] = useState(false);
 
     const presentWeek = getWeekKey(currentTime);
@@ -141,10 +132,6 @@ export const QueuePanel: React.FC = () => {
         () => computeProposals(routines, items, currentTime),
         [routines, items, currentTime]
     );
-
-    const hasDismissedThisWeek = useMemo(() => {
-        return routines.some(r => !r.deletedAt && r.dismissedAt && getWeekKey(r.dismissedAt) === presentWeek);
-    }, [routines, presentWeek]);
 
     const ideasItems = getIdeasItems();
 
@@ -170,26 +157,12 @@ export const QueuePanel: React.FC = () => {
                 <section className="queue-section">
                     <div className="queue-section__header">
                         <h3>Routines</h3>
-                        <button
-                            className="queue-section__refill"
-                            onClick={clearDismissals}
-                            disabled={!hasDismissedThisWeek}
-                            title={
-                                hasDismissedThisWeek
-                                    ? 'Bring dismissed routines back to the queue'
-                                    : 'Nothing dismissed this week'
-                            }
-                        >
-                            ↻ Refill
-                        </button>
                     </div>
                     <div ref={setProposalsRef} className="queue-section__body">
                         <SortableContext items={proposalIds} strategy={verticalListSortingStrategy}>
                             {proposals.length === 0 ? (
                                 <div className="queue-section__empty">
-                                    {hasDismissedThisWeek
-                                        ? 'No more routines this week. Tap Refill to see dismissed ones.'
-                                        : 'All routines are up to date.'}
+                                    All routines are up to date.
                                 </div>
                             ) : (
                                 proposals.map(proposal => (
@@ -197,7 +170,6 @@ export const QueuePanel: React.FC = () => {
                                         key={proposal.routine.id}
                                         proposal={proposal}
                                         presentWeek={presentWeek}
-                                        onDismiss={() => dismissProposal(proposal.routine.id)}
                                     />
                                 ))
                             )}

@@ -320,6 +320,12 @@ button:disabled {
     border-left: 3px solid #8B5CB4;
 }
 
+.chip.routine.annual {
+    background: rgba(194, 130, 59, 0.2);
+    color: #8B5A2B;
+    border-left: 3px solid #C2823B;
+}
+
 .chip.rolled-over {
     background: rgba(194, 130, 59, 0.2);
     color: #8B5A2B;
@@ -1584,7 +1590,6 @@ button:disabled {
     margin: 0;
 }
 
-.queue-section__refill,
 .queue-section__add {
     font-size: 0.75rem;
     color: var(--text-muted);
@@ -1594,15 +1599,9 @@ button:disabled {
     transition: all var(--transition-fast);
 }
 
-.queue-section__refill:hover:not(:disabled),
 .queue-section__add:hover {
     background: var(--bg-tertiary);
     color: var(--text-primary);
-}
-
-.queue-section__refill:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
 }
 
 .queue-section__body {
@@ -1616,36 +1615,12 @@ button:disabled {
     text-align: center;
 }
 
-/* Proposal cards reuse .task-card styling. These rules only add the small subtitle
-   text and dismiss button — title, chip, and grip handle styles come from .task-card. */
+/* Proposal cards reuse .task-card styling. The small subtitle text below the
+   title — title, chip, and grip handle styles come from .task-card. */
 .proposal-last-completed {
     font-size: 0.7rem;
     color: var(--text-muted);
     font-style: italic;
-}
-
-.proposal-dismiss-btn {
-    width: 20px;
-    height: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    background: transparent;
-    border-radius: var(--radius-full);
-    transition: all var(--transition-fast);
-    opacity: 0.4;
-}
-
-.task-card.proposal-card:hover .proposal-dismiss-btn {
-    opacity: 0.85;
-}
-
-.proposal-dismiss-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    opacity: 1 !important;
 }
 
 

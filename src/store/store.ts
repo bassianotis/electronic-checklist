@@ -47,8 +47,6 @@ interface TaskStore extends AppState {
     runRoutineProposalsMigrationV1: () => void;
     runRoutineProposalsMigrationV2: () => void;
     acceptProposal: (routineId: string, week: WeekKey, insertIndex?: number, stageForDrag?: boolean) => void;
-    dismissProposal: (routineId: string) => void;
-    clearDismissals: () => void;
     rolloverPastItems: () => void;
     executeRollover: () => void;
     advanceTime: (days: number) => void;
@@ -731,34 +729,6 @@ export const useTaskStore = create<TaskStore>()(
                     reorderItem(taskId, insertIndex, week);
                 }
 
-                triggerSync();
-            },
-
-            dismissProposal: (routineId: string) => {
-                const { triggerSync } = get();
-                const dismissedAt = get().currentTime;
-                set((state) => ({
-                    routines: state.routines.map(r =>
-                        r.id === routineId && !r.deletedAt
-                            ? { ...r, dismissedAt, updatedAt: Date.now() }
-                            : r
-                    ),
-                }));
-                triggerSync();
-            },
-
-            clearDismissals: () => {
-                const { triggerSync } = get();
-                const presentWk = getWeekKey(get().currentTime);
-                const nowTs = Date.now();
-                set((state) => ({
-                    routines: state.routines.map(r => {
-                        if (!r.dismissedAt) return r;
-                        if (getWeekKey(r.dismissedAt) !== presentWk) return r;
-                        const { dismissedAt: _drop, ...rest } = r;
-                        return { ...rest, updatedAt: nowTs };
-                    }),
-                }));
                 triggerSync();
             },
 
