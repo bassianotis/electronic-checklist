@@ -138,6 +138,7 @@ const App: React.FC = () => {
             hydrateFromApi().then(() => {
                 runRoutineProposalsMigrationV1();
                 runRoutineProposalsMigrationV2();
+                useTaskStore.getState().purgeStaleSoftDeletes();
             });
 
             // Restore viewed account from localStorage

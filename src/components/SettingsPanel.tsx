@@ -353,6 +353,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen: _isOpen, o
                     </p>
 
                     <div style={{ marginTop: '16px' }}>
+                        <button
+                            className="action-btn"
+                            onClick={() => {
+                                if (!confirm('Re-run cleanup migrations? Soft-deletes incomplete routine items so the queue starts clean.')) return;
+                                useTaskStore.getState().forceRerunCleanupMigrations();
+                            }}
+                        >
+                            ↻ Re-run cleanup migrations
+                        </button>
+                    </div>
+                    <p className="settings-help-text">
+                        Use if the queue or week list looks stale after an import.
+                    </p>
+
+                    <div style={{ marginTop: '16px' }}>
                         <button className="action-btn danger-btn" onClick={handleClearData}>
                             🗑️ Clear All Data
                         </button>

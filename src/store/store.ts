@@ -46,6 +46,8 @@ interface TaskStore extends AppState {
     updateRoutine: (id: string, updates: Partial<Routine>, overwriteModifiedNotes?: boolean) => void;
     runRoutineProposalsMigrationV1: () => void;
     runRoutineProposalsMigrationV2: () => void;
+    forceRerunCleanupMigrations: () => void;
+    purgeStaleSoftDeletes: () => void;
     acceptProposal: (routineId: string, week: WeekKey, insertIndex?: number, stageForDrag?: boolean) => void;
     rolloverPastItems: () => void;
     executeRollover: () => void;
@@ -686,6 +688,37 @@ export const useTaskStore = create<TaskStore>()(
                     return { items: updatedItems, routineProposalsMigrationV2Done: true, updatedAt: nowTs };
                 });
                 triggerSync();
+            },
+
+            // Manual rescue lever: clears the migration latches and re-runs
+            // V1 + V2. Use when state ends up weird (e.g., after restoring a
+            // backup whose flags don't reflect the actual item set).
+            forceRerunCleanupMigrations: () => {
+                const { runRoutineProposalsMigrationV1, runRoutineProposalsMigrationV2 } = get();
+                set({
+                    routineProposalsMigrationV1Done: false,
+                    routineProposalsMigrationV2Done: false,
+                });
+                runRoutineProposalsMigrationV1();
+                runRoutineProposalsMigrationV2();
+            },
+
+            // Hard-delete soft-deleted items older than the retention window.
+            // Soft-deletes accumulate forever otherwise — every dismissed
+            // routine instance, every cleared task, and every migration's
+            // wipe stays in the JSON. After 30 days the merge layer no longer
+            // needs them as deletion evidence.
+            purgeStaleSoftDeletes: () => {
+                const { triggerSync } = get();
+                const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+                let purged = 0;
+                set((state) => {
+                    const items = state.items.filter(i => !(i.deletedAt && i.deletedAt < cutoff));
+                    purged = state.items.length - items.length;
+                    if (purged === 0) return state;
+                    return { items };
+                });
+                if (purged > 0) triggerSync();
             },
 
             acceptProposal: (routineId: string, week: WeekKey, insertIndex?: number, stageForDrag?: boolean) => {
