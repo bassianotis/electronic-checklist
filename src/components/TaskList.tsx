@@ -20,6 +20,7 @@ import type { WeekKey, Item, Routine } from '../types';
 import { IDEAS_WEEK_KEY } from '../types';
 
 import { compareWeekKeys, addWeeks, getFirstDayOfWeek, getWeekKey } from '../utils/timeUtils';
+import { PROPOSALS_CONTAINER_KEY } from '../utils/proposalUtils';
 import dayjs from 'dayjs';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import {
@@ -31,7 +32,7 @@ import {
 
 // Components
 import { SideDrawer } from './SideDrawer';
-import { IdeasPanel } from './IdeasPanel';
+import { QueuePanel, ProposalCardVisual } from './QueuePanel';
 import { RoutineManager } from './RoutineManager';
 import { ArchivePanel } from './ArchivePanel';
 import { SettingsPanel } from './SettingsPanel';
@@ -40,8 +41,8 @@ import { WeekSection } from './WeekSection';
 
 interface TaskListProps {
     onPresentWeekVisible?: (visible: boolean, isAbove?: boolean) => void;
-    activePanel: 'archive' | 'routines' | 'ideas' | 'settings' | 'collections' | null;
-    onTogglePanel: (panel: 'archive' | 'routines' | 'ideas' | 'settings' | 'collections') => void;
+    activePanel: 'archive' | 'routines' | 'queue' | 'settings' | 'collections' | null;
+    onTogglePanel: (panel: 'archive' | 'routines' | 'queue' | 'settings' | 'collections') => void;
     onClosePanel: () => void;
 }
 
@@ -126,6 +127,8 @@ export const TaskList: React.FC<TaskListProps> = ({
     const routines: Routine[] = (isReadOnly && viewedData?.routines) || store.routines;
     const weekNotes = (isReadOnly && viewedData?.weekNotes) || store.weekNotes;
     const reorderItem = store.reorderItem;
+    const acceptProposal = store.acceptProposal;
+    const deleteItem = store.deleteItem;
 
     const [activeId, setActiveId] = useState<string | null>(null);
     const [announcement, setAnnouncement] = useState('');
@@ -139,20 +142,42 @@ export const TaskList: React.FC<TaskListProps> = ({
     // Track original position of dragged item to keep a spacer
     const [dragOrigin, setDragOrigin] = useState<{ week: WeekKey; orderIndex: number; item: Item } | null>(null);
 
-    const visibleItems = getVisibleItems();
-    const ideasItems = getIdeasItems();
+    // Task id of a proposal that was promoted to a real task at drag-start.
+    // Used to apply the focus-window restriction during drag and to hard-delete
+    // the task if the drag is cancelled without a valid drop target.
+    const [promotedTaskId, setPromotedTaskId] = useState<string | null>(null);
+
+    // Snapshot of proposal-shaped preview fields so DragOverlay can render a
+    // compact ProposalCard-style card during the drag instead of the full
+    // TaskCard (which auto-expands for time-tracked / notes / etc.).
+    const [proposalPreview, setProposalPreview] = useState<{
+        title: string;
+        cadence: string;
+        lastCompletedAt: string | null;
+    } | null>(null);
+
+    const baseVisibleItems: Item[] = getVisibleItems();
+    const ideasItems: Item[] = getIdeasItems();
+    // Staged proposal drags — not rendered anywhere directly (the ProposalCard
+    // in the queue continues to serve as their sortable while they're staged),
+    // but must be in allDragItems so handleDragOver can find them and call
+    // reorderItem to move them into a timeline week on hover.
+    const stagedItems: Item[] = store.items.filter(
+        (i) => i.week === PROPOSALS_CONTAINER_KEY && !i.deletedAt
+    );
     // Combine for drag logic lookups
-    const allDragItems = [...visibleItems, ...ideasItems];
+    const allDragItems = [...baseVisibleItems, ...ideasItems, ...stagedItems];
 
     const presentWeek = getPresentWeek();
+    const nextWeek = addWeeks(presentWeek, 1);
     const routineMap = new Map<string, Routine>(routines.map((r: Routine) => [r.id, r]));
 
     // Group items by week (only visible timeline items)
-    const itemsByWeek = visibleItems.reduce((acc: Record<WeekKey, typeof visibleItems>, item: Item) => {
+    const itemsByWeek = baseVisibleItems.reduce((acc: Record<WeekKey, Item[]>, item: Item) => {
         if (!acc[item.week]) acc[item.week] = [];
         acc[item.week].push(item);
         return acc;
-    }, {} as Record<WeekKey, typeof visibleItems>);
+    }, {} as Record<WeekKey, Item[]>);
 
     // Generate default "Year View" weeks
     const defaultWeeks = new Set<WeekKey>();
@@ -215,13 +240,43 @@ export const TaskList: React.FC<TaskListProps> = ({
         const id = event.active.id as string;
         setActiveId(id);
 
+        const data = event.active.data.current;
+        if (data?.type === 'proposal' && data?.routineId) {
+            // Unify proposal drag with regular task drag: create the real task
+            // now so everything downstream (handleDragOver, handleDragEnd,
+            // reorderItem, shift-aside animations) uses the same code path
+            // as any other task drag. ProposalCard's useSortable id matches
+            // this task id so dnd-kit tracks the draggable across the handoff.
+            const routineId = data.routineId as string;
+            const targetWeek = (data.presentWeek as WeekKey) ?? presentWeek;
+            const taskId = `${routineId}-${targetWeek}`;
+            // Stage the task in the sidebar sentinel, not in the target week.
+            // The timeline stays unshifted until the cursor reaches a real week,
+            // matching how Ideas cards only enter the timeline on hover.
+            acceptProposal(routineId, targetWeek, undefined, true);
+            setPromotedTaskId(taskId);
+            const routine = routineMap.get(routineId);
+            const synthetic: Item = {
+                id: taskId,
+                title: routine?.title ?? '',
+                routineId,
+                week: PROPOSALS_CONTAINER_KEY,
+                status: 'incomplete',
+                orderIndex: 0,
+                updatedAt: Date.now(),
+            };
+            setDragOrigin({ week: PROPOSALS_CONTAINER_KEY, orderIndex: 0, item: synthetic });
+            setProposalPreview({
+                title: (data.title as string) ?? routine?.title ?? '',
+                cadence: (data.cadence as string) ?? routine?.cadence ?? '',
+                lastCompletedAt: (data.lastCompletedAt as string | null) ?? null,
+            });
+            return;
+        }
+
         const item = allDragItems.find(i => i.id === id);
         if (item) {
-            setDragOrigin({
-                week: item.week,
-                orderIndex: item.orderIndex,
-                item: item
-            });
+            setDragOrigin({ week: item.week, orderIndex: item.orderIndex, item });
         }
     };
 
@@ -229,33 +284,37 @@ export const TaskList: React.FC<TaskListProps> = ({
         const { active, over } = event;
         if (!over) return;
 
-        const activeId = resolveId(active.id as string);
+        const activeIdResolved = resolveId(active.id as string);
         const rawOverId = over.id as string;
         const overId = resolveId(rawOverId);
 
-        const activeItem = allDragItems.find(i => i.id === activeId);
+        const activeItem = allDragItems.find(i => i.id === activeIdResolved);
+        if (!activeItem) return;
 
         let overWeek: WeekKey | undefined;
-        let overItem: typeof activeItem | undefined;
+        let overItem: Item | undefined;
 
         const maybeItem = allDragItems.find(i => i.id === overId);
         if (maybeItem) {
             overItem = maybeItem;
-            // If dragging over an item, use that item's week logic
             if (dragOrigin && overId === dragOrigin.item.id && isSpacerId(rawOverId)) {
                 overWeek = dragOrigin.week;
             } else {
                 overWeek = maybeItem.week;
             }
-        } else {
-            // Check if over a week drop zone directly
-            // Is it a week key?
-            if (!isSpacerId(rawOverId) && sortedWeeks.includes(rawOverId)) {
-                overWeek = rawOverId as WeekKey;
-            }
+        } else if (!isSpacerId(rawOverId) && sortedWeeks.includes(rawOverId)) {
+            overWeek = rawOverId as WeekKey;
         }
 
-        if (!activeItem || !overWeek) return;
+        if (!overWeek) return;
+
+        // Focus-window restriction for a just-promoted proposal: it can only
+        // live in the present or next week. Dragging elsewhere is a no-op
+        // until the cursor returns to a valid week.
+        if (activeIdResolved === promotedTaskId &&
+            overWeek !== presentWeek && overWeek !== nextWeek) {
+            return;
+        }
 
         if (activeItem.week !== overWeek) {
             let newIndex = 0;
@@ -271,24 +330,34 @@ export const TaskList: React.FC<TaskListProps> = ({
                 newIndex = allDragItems.filter(i => i.week === overWeek).length;
             }
 
-            reorderItem(activeId, newIndex, overWeek);
+            reorderItem(activeIdResolved, newIndex, overWeek);
         }
     };
 
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
+        const promoted = promotedTaskId;
+
         setActiveId(null);
         setDragOrigin(null);
+        setPromotedTaskId(null);
+        setProposalPreview(null);
 
-        if (!over) return;
+        const activeIdResolved = resolveId(active.id as string);
+        const wasPromoted = promoted !== null && activeIdResolved === promoted;
 
-        const activeId = resolveId(active.id as string);
+        if (!over) {
+            // Dropped outside any droppable. If this was a just-promoted
+            // proposal, tear down the task we speculatively created.
+            if (wasPromoted && promoted) deleteItem(promoted);
+            return;
+        }
+
         const rawOverId = over.id as string;
         const overId = resolveId(rawOverId);
 
-        const activeItem = allDragItems.find(i => i.id === activeId);
+        const activeItem = allDragItems.find(i => i.id === activeIdResolved);
 
-        // Determine target
         const overItem = allDragItems.find(i => i.id === overId);
         let targetWeek: WeekKey;
 
@@ -296,13 +365,32 @@ export const TaskList: React.FC<TaskListProps> = ({
             targetWeek = overItem.week;
         } else {
             if (isSpacerId(rawOverId)) {
+                if (wasPromoted && promoted) deleteItem(promoted);
                 return;
             }
-            // Check if it's a week key directly
+            // Only real week targets are valid drop containers. Proposal card
+            // ids and the proposals container key are not weeks — treating
+            // them as such would write garbage into item.week and crash the
+            // timeline on the next render.
+            const isValidWeekTarget =
+                sortedWeeks.includes(rawOverId) || rawOverId === IDEAS_WEEK_KEY;
+            if (!isValidWeekTarget) {
+                if (wasPromoted && promoted) deleteItem(promoted);
+                return;
+            }
             targetWeek = rawOverId as WeekKey;
         }
 
-        if (!activeItem) return;
+        if (!activeItem) {
+            if (wasPromoted && promoted) deleteItem(promoted);
+            return;
+        }
+
+        // Promoted proposals can only land in the focus window.
+        if (wasPromoted && targetWeek !== presentWeek && targetWeek !== nextWeek) {
+            if (promoted) deleteItem(promoted);
+            return;
+        }
 
         // Prevent dragging completed items to Ideas
         if (targetWeek === IDEAS_WEEK_KEY && activeItem.status === 'complete') {
@@ -320,14 +408,16 @@ export const TaskList: React.FC<TaskListProps> = ({
             newIndex = overIndex >= 0 ? overIndex : newIndex;
         }
 
-        if (activeItem.week !== targetWeek || activeId !== overId) {
+        if (activeItem.week !== targetWeek || activeIdResolved !== overId) {
             reorderItem(activeItem.id, newIndex, targetWeek);
         }
 
         setAnnouncement(`Moved ${activeItem.title} to ${targetWeek}`);
     };
 
-    const activeItemData = activeId ? allDragItems.find(i => i.id === activeId) : null;
+    const activeItemData = activeId
+        ? (allDragItems.find(i => i.id === activeId) ?? dragOrigin?.item ?? null)
+        : null;
     const activeRoutine = activeItemData?.routineId ? routineMap.get(activeItemData.routineId) : undefined;
 
     const monthsShown = new Set<string>();
@@ -361,7 +451,10 @@ export const TaskList: React.FC<TaskListProps> = ({
             >
                 <div ref={parentConf} className="weeks-wrapper">
                     {sortedWeeks.map((week) => {
-                        const weekItems = itemsByWeek[week] || [];
+                        const allWeekItems = itemsByWeek[week] || [];
+                        const weekItems = compareWeekKeys(week, nextWeek) <= 0
+                            ? allWeekItems
+                            : allWeekItems.filter(item => !item.routineId);
                         const isCurrentWeek = week === presentWeek;
                         const sectionInfo = getSectionLabel(week, presentWeek);
 
@@ -431,8 +524,8 @@ export const TaskList: React.FC<TaskListProps> = ({
                     {activePanel === 'archive' && (
                         <ArchivePanel isOpen={true} onClose={() => { }} />
                     )}
-                    {activePanel === 'ideas' && (
-                        <IdeasPanel isOpen={true} onClose={onClosePanel} />
+                    {activePanel === 'queue' && (
+                        <QueuePanel />
                     )}
                     {activePanel === 'settings' && (
                         <SettingsPanel isOpen={true} onClose={onClosePanel} />
@@ -443,7 +536,13 @@ export const TaskList: React.FC<TaskListProps> = ({
                 </SideDrawer>
 
                 <DragOverlay dropAnimation={null}>
-                    {activeItemData ? (
+                    {proposalPreview ? (
+                        <ProposalCardVisual
+                            title={proposalPreview.title}
+                            cadence={proposalPreview.cadence}
+                            lastCompletedAt={proposalPreview.lastCompletedAt}
+                        />
+                    ) : activeItemData ? (
                         <TaskCard
                             item={activeItemData}
                             routine={activeRoutine}

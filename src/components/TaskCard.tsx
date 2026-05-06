@@ -112,12 +112,13 @@ export const TaskCard: React.FC<TaskCardProps> = ({
     const isComplete = item.status === 'complete';
     const isIncomplete = item.status === 'incomplete';
 
-    // Safety check for special keys like 'ideas'
+    // Safety check for special keys like 'ideas' and 'routine-proposals'
     const isIdeas = item.week === 'ideas';
+    const isSpecialKey = isIdeas || item.week === 'routine-proposals';
 
     // Archived items are never "future" or "present" in the active sense
-    const isFuture = !isIdeas && !isArchived && isFutureWeek(item.week, presentWeek);
-    const isPresent = !isIdeas && !isArchived && item.week === presentWeek;
+    const isFuture = !isSpecialKey && !isArchived && isFutureWeek(item.week, presentWeek);
+    const isPresent = !isSpecialKey && !isArchived && item.week === presentWeek;
 
     // Disable dragging for archived items
     const canDrag = !isArchived;

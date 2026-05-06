@@ -49,7 +49,7 @@ function getWeekInMonth(date: dayjs.Dayjs): number {
 /**
  * Check if a week falls within a seasonal range.
  */
-function isWeekInSeason(weekKey: WeekKey, routine: Routine): boolean {
+export function isWeekInSeason(weekKey: WeekKey, routine: Routine): boolean {
     if (routine.isYearRound) {
         return true;
     }
@@ -93,7 +93,7 @@ function isWeekInSeason(weekKey: WeekKey, routine: Routine): boolean {
 /**
  * Check if a week matches the routine's anchor for the given cadence.
  */
-function matchesCadence(weekKey: WeekKey, routine: Routine): boolean {
+export function matchesCadence(weekKey: WeekKey, routine: Routine): boolean {
     const weekDate = dayjs(getFirstDayOfWeek(weekKey));
     const anchorDate = dayjs(getFirstDayOfWeek(routine.anchorWeek));
 
@@ -139,63 +139,6 @@ function matchesCadence(weekKey: WeekKey, routine: Routine): boolean {
  */
 export function shouldSpawnInWeek(weekKey: WeekKey, routine: Routine): boolean {
     return isWeekInSeason(weekKey, routine) && matchesCadence(weekKey, routine);
-}
-
-/**
- * Generate a unique ID for a routine-spawned task.
- */
-function generateTaskId(routine: Routine, weekKey: WeekKey): string {
-    return `${routine.id}-${weekKey}`;
-}
-
-/**
- * Spawn tasks for a routine across all visible weeks.
- * Returns new tasks that don't already exist.
- */
-export function spawnTasksForRoutine(
-    routine: Routine,
-    visibleWeeks: WeekKey[],
-    existingItems: Item[]
-): Item[] {
-    const existingIds = new Set(existingItems.map(item => item.id));
-    const newTasks: Item[] = [];
-
-    for (const weekKey of visibleWeeks) {
-        if (!shouldSpawnInWeek(weekKey, routine)) {
-            continue;
-        }
-
-        const taskId = generateTaskId(routine, weekKey);
-
-        // Skip if task already exists
-        if (existingIds.has(taskId)) {
-            continue;
-        }
-
-        const task: Item = {
-            id: taskId,
-            title: routine.title,
-            routineId: routine.id,
-            week: weekKey,
-            status: 'incomplete',
-            orderIndex: 1000, // Will be reindexed
-            notes: routine.notes,
-            inheritedNotes: routine.notes,
-        };
-
-        // Apply task type properties
-        if (routine.taskType === 'time-tracked' && routine.minutesGoal) {
-            task.minutesGoal = routine.minutesGoal;
-            task.minutes = 0;
-        } else if (routine.taskType === 'multi-occurrence' && routine.targetCount) {
-            task.targetCount = routine.targetCount;
-            task.completedCount = 0;
-        }
-
-        newTasks.push(task);
-    }
-
-    return newTasks;
 }
 
 /**
