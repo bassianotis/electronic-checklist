@@ -124,6 +124,8 @@ export const useTaskStore = create<TaskStore>()(
                         userTimezone: state.userTimezone,
                         lastRolledWeek: state.lastRolledWeek,
                         dataVersion: state.dataVersion,
+                        routineProposalsMigrationV1Done: state.routineProposalsMigrationV1Done,
+                        routineProposalsMigrationV2Done: state.routineProposalsMigrationV2Done,
                     };
 
                     try {
@@ -529,7 +531,10 @@ export const useTaskStore = create<TaskStore>()(
                                 updated.completedCount = 0;
                             }
                         }
-                        if (updates.dueDateISO !== undefined) {
+                        // Use 'in' so an explicit `dueDateISO: undefined` clears
+                        // the date. Checking `!== undefined` swallowed clears
+                        // because TaskCard always spreads the field.
+                        if ('dueDateISO' in updates) {
                             updated.dueDateISO = updates.dueDateISO || undefined;
                             updated.hasDueDate = !!updates.dueDateISO;
                         }
@@ -644,37 +649,41 @@ export const useTaskStore = create<TaskStore>()(
                 const nowTs = Date.now();
                 set((state) => {
                     const presentWeek = getWeekKey(state.currentTime);
-                    // Remove all incomplete routine-linked tasks in past weeks
-                    const cleanedItems = state.items.filter(item => {
-                        if (!item.routineId) return true;
-                        if (item.deletedAt) return true;
-                        if (item.status === 'complete') return true;
-                        if (item.week === IDEAS_WEEK_KEY) return true;
-                        return compareWeekKeys(item.week, presentWeek) >= 0;
+                    // Soft-delete past-week incomplete routine items. Filtering
+                    // them out instead would let mergeEntities resurrect them
+                    // from the server on the next hydrate.
+                    const updatedItems = state.items.map(item => {
+                        if (!item.routineId) return item;
+                        if (item.deletedAt) return item;
+                        if (item.status === 'complete') return item;
+                        if (item.week === IDEAS_WEEK_KEY) return item;
+                        if (compareWeekKeys(item.week, presentWeek) >= 0) return item;
+                        return { ...item, deletedAt: nowTs, updatedAt: nowTs };
                     });
-                    return { items: cleanedItems, routineProposalsMigrationV1Done: true, updatedAt: nowTs };
+                    return { items: updatedItems, routineProposalsMigrationV1Done: true, updatedAt: nowTs };
                 });
                 triggerSync();
             },
 
-            // Clears all pre-existing incomplete routine tasks in the current and future weeks.
-            // Before the proposal model, routines auto-spawned tasks into all 12 visible months.
-            // Those stale items block computeProposals from surfacing routines that already have
-            // a task in the present/next week window. Completed tasks are preserved for history.
+            // Soft-delete every incomplete routine task across all weeks.
+            // Pre-redesign, routines auto-spawned tasks into 12 months of
+            // future weeks. Those stale items now interfere with the new
+            // queue model (carry-forward + projected completion). Completed
+            // tasks are preserved for history. Soft-delete (not filter)
+            // matters so the deletion syncs through merge.
             runRoutineProposalsMigrationV2: () => {
                 if (get().routineProposalsMigrationV2Done) return;
                 const { triggerSync } = get();
                 const nowTs = Date.now();
                 set((state) => {
-                    const cleanedItems = state.items.filter(item => {
-                        if (!item.routineId) return true;
-                        if (item.deletedAt) return true;
-                        if (item.status === 'complete') return true;
-                        if (item.week === IDEAS_WEEK_KEY) return true;
-                        // Drop every remaining incomplete routine task, regardless of week.
-                        return false;
+                    const updatedItems = state.items.map(item => {
+                        if (!item.routineId) return item;
+                        if (item.deletedAt) return item;
+                        if (item.status === 'complete') return item;
+                        if (item.week === IDEAS_WEEK_KEY) return item;
+                        return { ...item, deletedAt: nowTs, updatedAt: nowTs };
                     });
-                    return { items: cleanedItems, routineProposalsMigrationV2Done: true, updatedAt: nowTs };
+                    return { items: updatedItems, routineProposalsMigrationV2Done: true, updatedAt: nowTs };
                 });
                 triggerSync();
             },

@@ -102,7 +102,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen: _isOpen, o
                         collections: data.collections || [],
                         collectionItems: data.collectionItems || [],
                         weekNotes: data.weekNotes || [],
-                        dataVersion: (data.meta?.version || 0) + 1
+                        dataVersion: (data.meta?.version || 0) + 1,
+                        // Imported data may not reflect the cleanup migrations.
+                        // Clearing the latches forces V1+V2 to run on next
+                        // load against the fresh state.
+                        routineProposalsMigrationV1Done: false,
+                        routineProposalsMigrationV2Done: false,
                     });
                     useTaskStore.getState().triggerSync();
                 } else {
