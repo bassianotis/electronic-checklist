@@ -148,7 +148,22 @@ const App: React.FC = () => {
             const interval = setInterval(() => {
                 hydrateFromApi();
             }, 30000);
-            return () => clearInterval(interval);
+
+            // Flush any pending debounced sync before the tab goes away.
+            // Without this, edits made within the 1s debounce window evaporate
+            // on close — the next device that opens won't see them.
+            const flushOnHide = () => useTaskStore.getState().flushSync();
+            const onVisibilityChange = () => {
+                if (document.visibilityState === 'hidden') flushOnHide();
+            };
+            window.addEventListener('pagehide', flushOnHide);
+            document.addEventListener('visibilitychange', onVisibilityChange);
+
+            return () => {
+                clearInterval(interval);
+                window.removeEventListener('pagehide', flushOnHide);
+                document.removeEventListener('visibilitychange', onVisibilityChange);
+            };
         }
     }, [isAuthenticated, hydrateFromApi, runRoutineProposalsMigrationV1, runRoutineProposalsMigrationV2]);
 

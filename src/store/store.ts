@@ -77,6 +77,7 @@ interface TaskStore extends AppState {
     // Sync Actions
     hydrateFromApi: () => Promise<void>;
     triggerSync: () => void;
+    flushSync: () => void;
 
     // Computed helpers
     getPresentWeek: () => WeekKey;
@@ -157,7 +158,10 @@ export const useTaskStore = create<TaskStore>()(
                                         dataVersion: remoteData.version || currentState.dataVersion,
                                         syncStatus: 'idle'
                                     });
-                                    // Optionally verify/sync back immediately
+                                    // Re-push so the surviving local change makes it to the server.
+                                    // Without this, conflicts silently drop the loser's edit until
+                                    // another unrelated local edit triggers a sync.
+                                    get().triggerSync();
                                 } else if (remoteData.version === 0) {
                                     // Server is empty/reset. We should adopt version 0 as base so next sync works.
                                     // This handles "First push to empty server" if local was > 0.
@@ -173,6 +177,35 @@ export const useTaskStore = create<TaskStore>()(
                         }
                     }
                 }, 1000); // Debounce 1s
+            },
+
+            flushSync: () => {
+                // Cancel any pending debounced push and send the current state immediately.
+                // Used on tab close / app backgrounding so changes made within the
+                // debounce window don't evaporate. `keepalive: true` lets the request
+                // survive the page being torn down.
+                if (syncTimeout) {
+                    clearTimeout(syncTimeout);
+                    syncTimeout = null;
+                }
+                const state = get();
+                const payload: AppState = {
+                    items: state.items,
+                    routines: state.routines,
+                    collections: state.collections,
+                    collectionItems: state.collectionItems,
+                    weekNotes: state.weekNotes,
+                    currentTime: state.currentTime,
+                    allowUncomplete: state.allowUncomplete,
+                    userTimezone: state.userTimezone,
+                    lastRolledWeek: state.lastRolledWeek,
+                    dataVersion: state.dataVersion,
+                    routineProposalsMigrationV1Done: state.routineProposalsMigrationV1Done,
+                    routineProposalsMigrationV2Done: state.routineProposalsMigrationV2Done,
+                };
+                // Fire-and-forget — we can't await on a page that's going away.
+                // Conflicts on this path are reconciled on the next session via hydrateFromApi.
+                api.syncData(payload, state.dataVersion, { keepalive: true }).catch(() => {});
             },
 
             hydrateFromApi: async () => {
@@ -267,6 +300,10 @@ export const useTaskStore = create<TaskStore>()(
                                 ...i,
                                 status: 'incomplete' as const,
                                 completedAt: undefined,
+                                // Reset progress counters so a stale-but-higher count
+                                // from another device can't re-trip isGoalMet during merge.
+                                ...(i.completedCount !== undefined ? { completedCount: 0 } : {}),
+                                ...(i.minutes !== undefined ? { minutes: 0 } : {}),
                                 updatedAt: nowTs
                             }
                             : i

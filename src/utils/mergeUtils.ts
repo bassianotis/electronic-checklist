@@ -2,15 +2,27 @@ import type { AppState } from '../types';
 
 export function mergeState(local: AppState, remote: AppState): AppState {
     const mergedItems = mergeEntities(local.items, remote.items, (l, r) => {
-        // Custom logic for Item fields
+        // mergeEntities passes (older, newer): `r` is always the newer side.
         const merged = { ...r };
 
-        // Counters: Max wins
-        if (l.completedCount !== undefined || r.completedCount !== undefined) {
-            merged.completedCount = Math.max(l.completedCount || 0, r.completedCount || 0);
+        // Counters: max-wins protects concurrent increments on the same item, BUT
+        // an explicit reset (newer side at 0 with status=incomplete, older side > 0)
+        // must be honored. Otherwise uncompleting a multi-occurrence task is silently
+        // undone by the other device's higher count via isGoalMet below.
+        const newerCount = r.completedCount ?? 0;
+        const olderCount = l.completedCount ?? 0;
+        if (newerCount === 0 && r.status === 'incomplete' && olderCount > 0) {
+            merged.completedCount = 0;
+        } else if (l.completedCount !== undefined || r.completedCount !== undefined) {
+            merged.completedCount = Math.max(newerCount, olderCount);
         }
-        if (l.minutes !== undefined || r.minutes !== undefined) {
-            merged.minutes = Math.max(l.minutes || 0, r.minutes || 0);
+
+        const newerMinutes = r.minutes ?? 0;
+        const olderMinutes = l.minutes ?? 0;
+        if (newerMinutes === 0 && r.status === 'incomplete' && olderMinutes > 0) {
+            merged.minutes = 0;
+        } else if (l.minutes !== undefined || r.minutes !== undefined) {
+            merged.minutes = Math.max(newerMinutes, olderMinutes);
         }
 
         // Status Re-evaluation based on merged progress

@@ -78,13 +78,14 @@ export const api = {
         return request<SyncResponse>('/data', { headers });
     },
 
-    syncData: (data: AppState, baseVersion: number) =>
+    syncData: (data: AppState, baseVersion: number, options: { keepalive?: boolean } = {}) =>
         request<SyncResponse>('/data', {
             method: 'POST',
             headers: {
                 'If-Match': `"${baseVersion}"`
             },
-            body: JSON.stringify(data)
+            body: JSON.stringify(data),
+            keepalive: options.keepalive,
         }),
 
     clearData: () =>
