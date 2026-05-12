@@ -326,13 +326,6 @@ button:disabled {
     border-left: 3px solid #C2823B;
 }
 
-.chip.rolled-over {
-    background: rgba(194, 130, 59, 0.2);
-    color: #8B5A2B;
-    font-size: 0.65rem;
-    border-left: 3px solid #C2823B;
-}
-
 /* Progress area */
 .progress-area {
     display: inline-flex;

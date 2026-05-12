@@ -400,12 +400,6 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                                 </span>
                             )}
 
-                            {item.originalWeek && !isArchived && (
-                                <span className="chip rolled-over" title={`Originally scheduled for ${item.originalWeek}`}>
-                                    ↻ {relativeLabel(item.originalWeek, presentWeek)}
-                                </span>
-                            )}
-
                             {hasDueDate && !isArchived && (
                                 <span className={`chip due-date ${isComplete ? 'completed' : (!isDueDatePast ? 'future' : '')}`}>
                                     Due {formatDynamicDueDate(item.dueDateISO!, presentWeek, currentTime)}
