@@ -1,0 +1,1210 @@
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import type { Item, Routine, WeekKey, AppState, Collection, CollectionItem, WeekNote } from '../types';
+import { IDEAS_WEEK_KEY } from '../types';
+import { PROPOSALS_CONTAINER_KEY } from '../utils/proposalUtils';
+// Default "now" time - January 13, 2026 at noon (Maintenance of original dev time)
+const DEFAULT_NOW = '2026-01-13T12:00:00.000Z';
+
+console.log('Store initializing with DEFAULT_NOW:', DEFAULT_NOW);
+
+import {
+    getWeekKey,
+    compareWeekKeys
+} from '../utils/timeUtils';
+import {
+    getVisibleWeeks,
+    updateRoutineTasks,
+    removeOutdatedRoutineTasks
+} from '../utils/routineSpawner';
+import { spawnCollectionNotes, removeOrphanedWeekNotes, updateWeekNotesFromCollectionItem, removeOutdatedWeekNotes } from '../utils/collectionSpawner';
+import { executeRolloverLogic } from '../utils/rolloverUtils';
+import { api } from '../api/client';
+import { mergeState } from '../utils/mergeUtils';
+import dayjs from 'dayjs';
+
+interface TaskStore extends AppState {
+    syncStatus: 'idle' | 'syncing' | 'error' | 'offline';
+    lastSyncTime?: number;
+
+    // Actions
+    completeItem: (id: string) => void;
+    uncompleteItem: (id: string) => void;
+    startItem: (id: string) => void;
+    incrementProgress: (id: string, minutes: number) => void;
+    incrementOccurrence: (id: string) => void;
+    decrementOccurrence: (id: string) => void;
+    reorderItem: (id: string, newOrderIndex: number, newWeek?: WeekKey) => void;
+    moveToWeek: (id: string, week: WeekKey) => void;
+    addItem: (title: string, week: WeekKey, orderIndex: number, options?: { minutesGoal?: number; targetCount?: number; dueDateISO?: string }) => string;
+    updateItem: (id: string, updates: { title?: string; minutesGoal?: number; targetCount?: number; dueDateISO?: string; notes?: string; docked?: boolean }) => void;
+    archiveItem: (id: string) => void;
+    unarchiveItem: (id: string) => void;
+    deleteItem: (id: string) => void;
+    deleteRoutine: (id: string, removeRelatedTasks: boolean) => void;
+    addRoutine: (routine: Omit<Routine, 'id'>) => string;
+    updateRoutine: (id: string, updates: Partial<Routine>, overwriteModifiedNotes?: boolean) => void;
+    runRoutineProposalsMigrationV1: () => void;
+    runRoutineProposalsMigrationV2: () => void;
+    forceRerunCleanupMigrations: () => void;
+    purgeStaleSoftDeletes: () => void;
+    acceptProposal: (routineId: string, week: WeekKey, insertIndex?: number, stageForDrag?: boolean) => void;
+    rolloverPastItems: () => void;
+    executeRollover: () => void;
+    advanceTime: (days: number) => void;
+    setTime: (isoTime: string) => void;
+    toggleAllowUncomplete: () => void;
+    resetData: () => void;
+
+    // Collection & WeekNote Actions
+    addCollection: (name: string) => string;
+    updateCollection: (id: string, updates: Partial<Collection>) => void;
+    deleteCollection: (id: string) => void;
+    addCollectionItem: (collectionId: string, item: Omit<CollectionItem, 'id' | 'collectionId'>) => string;
+    updateCollectionItem: (id: string, updates: Partial<CollectionItem>, overwriteModifiedNotes?: boolean) => void;
+    deleteCollectionItem: (id: string) => void;
+    addWeekNote: (note: Omit<WeekNote, 'id'>) => string;
+    updateWeekNote: (id: string, updates: Partial<Omit<WeekNote, 'id'>>) => void;
+    deleteWeekNote: (id: string) => void;
+    spawnCollectionNotes: () => void;
+    getWeekNotes: (week: WeekKey) => WeekNote[];
+
+    // Time Management
+    isTimeFrozen: boolean;
+    toggleTimeFreeze: () => void;
+    resetTime: () => void;
+
+    // Sync Actions
+    hydrateFromApi: () => Promise<void>;
+    triggerSync: () => void;
+    flushSync: () => void;
+
+    // Computed helpers
+    getPresentWeek: () => WeekKey;
+    getVisibleItems: () => Item[];
+    getIdeasItems: () => Item[];
+    getArchivedItems: () => Item[];
+}
+
+import { getInitialData } from '../utils/initialization';
+
+const initialData = getInitialData();
+const DATA_VERSION = 0;
+
+let syncTimeout: any = null;
+
+export const useTaskStore = create<TaskStore>()(
+    persist(
+        (set, get) => ({
+            items: initialData.items,
+            routines: initialData.routines,
+            collections: [],
+            collectionItems: [],
+            weekNotes: [],
+            currentTime: DEFAULT_NOW,
+            isTimeFrozen: false,
+            allowUncomplete: false,
+            userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            dataVersion: DATA_VERSION,
+            syncStatus: 'idle',
+
+            triggerSync: () => {
+                if (syncTimeout) clearTimeout(syncTimeout);
+
+                set({ syncStatus: 'syncing' });
+
+                syncTimeout = setTimeout(async () => {
+                    const state = get();
+                    // Strip functions and UI state
+                    const payload: AppState = {
+                        items: state.items,
+                        routines: state.routines,
+                        collections: state.collections,
+                        collectionItems: state.collectionItems,
+                        weekNotes: state.weekNotes,
+                        currentTime: state.currentTime,
+                        allowUncomplete: state.allowUncomplete,
+                        userTimezone: state.userTimezone,
+                        lastRolledWeek: state.lastRolledWeek,
+                        dataVersion: state.dataVersion,
+                        routineProposalsMigrationV1Done: state.routineProposalsMigrationV1Done,
+                        routineProposalsMigrationV2Done: state.routineProposalsMigrationV2Done,
+                    };
+
+                    try {
+                        const response = await api.syncData(payload, state.dataVersion);
+
+                        if (response.status === 204 || response.status === 200) {
+                            const newVersion = parseInt(response.headers?.get('ETag')?.replace(/"/g, '') || '0', 10);
+                            set({
+                                syncStatus: 'idle',
+                                lastSyncTime: Date.now(),
+                                dataVersion: newVersion || state.dataVersion // Updates version
+                            });
+                        }
+                    } catch (err: any) {
+                        console.error('Sync failed', err);
+
+                        if (err.status === 412) {
+                            // Conflict!
+                            // Re-fetch logic
+                            try {
+                                const remoteData = await api.fetchData(); // Fetch latest
+                                if (remoteData.data) {
+                                    const currentState = get();
+                                    const merged = mergeState(currentState, remoteData.data);
+                                    set({
+                                        ...merged,
+                                        dataVersion: remoteData.version || currentState.dataVersion,
+                                        syncStatus: 'idle'
+                                    });
+                                    // Re-push so the surviving local change makes it to the server.
+                                    // Without this, conflicts silently drop the loser's edit until
+                                    // another unrelated local edit triggers a sync.
+                                    get().triggerSync();
+                                } else if (remoteData.version === 0) {
+                                    // Server is empty/reset. We should adopt version 0 as base so next sync works.
+                                    // This handles "First push to empty server" if local was > 0.
+                                    set({ dataVersion: 0 });
+                                    // Trigger sync again immediately
+                                    get().triggerSync();
+                                }
+                            } catch (fetchErr) {
+                                set({ syncStatus: 'error' });
+                            }
+                        } else {
+                            set({ syncStatus: 'error' });
+                        }
+                    }
+                }, 1000); // Debounce 1s
+            },
+
+            flushSync: () => {
+                // Cancel any pending debounced push and send the current state immediately.
+                // Used on tab close / app backgrounding so changes made within the
+                // debounce window don't evaporate. `keepalive: true` lets the request
+                // survive the page being torn down.
+                if (syncTimeout) {
+                    clearTimeout(syncTimeout);
+                    syncTimeout = null;
+                }
+                const state = get();
+                const payload: AppState = {
+                    items: state.items,
+                    routines: state.routines,
+                    collections: state.collections,
+                    collectionItems: state.collectionItems,
+                    weekNotes: state.weekNotes,
+                    currentTime: state.currentTime,
+                    allowUncomplete: state.allowUncomplete,
+                    userTimezone: state.userTimezone,
+                    lastRolledWeek: state.lastRolledWeek,
+                    dataVersion: state.dataVersion,
+                    routineProposalsMigrationV1Done: state.routineProposalsMigrationV1Done,
+                    routineProposalsMigrationV2Done: state.routineProposalsMigrationV2Done,
+                };
+                // Fire-and-forget — we can't await on a page that's going away.
+                // Conflicts on this path are reconciled on the next session via hydrateFromApi.
+                api.syncData(payload, state.dataVersion, { keepalive: true }).catch(() => {});
+            },
+
+            hydrateFromApi: async () => {
+                set({ syncStatus: 'syncing' });
+                try {
+                    const currentVersion = get().dataVersion;
+                    const response = await api.fetchData(currentVersion);
+
+                    if (response.status === 304) {
+                        set({ syncStatus: 'idle', lastSyncTime: Date.now() });
+                        return;
+                    }
+
+                    if (response.data) {
+                        const serverVersion = response.version || 0;
+
+                        // If server version is 1, it was deliberately reset/cleared
+                        // Don't merge - just replace entirely
+                        if (serverVersion === 1) {
+                            set({
+                                items: response.data.items || [],
+                                routines: response.data.routines || [],
+                                dataVersion: 1,
+                                syncStatus: 'idle',
+                                lastSyncTime: Date.now()
+                            });
+                            return;
+                        }
+
+                        const currentState = get();
+                        const merged = mergeState(currentState, response.data);
+                        set({
+                            ...merged,
+                            dataVersion: serverVersion || currentState.dataVersion,
+                            syncStatus: 'idle',
+                            lastSyncTime: Date.now()
+                        });
+                    } else {
+                        set({ syncStatus: 'idle' });
+                    }
+                } catch (err) {
+                    console.error('Hydrate failed', err);
+                    set({ syncStatus: 'error' });
+                }
+            },
+
+            completeItem: (id: string) => {
+                const { currentTime, triggerSync, items } = get();
+                const item = items.find(i => i.id === id);
+
+                // Prevent completing ideas
+                if (item?.week === IDEAS_WEEK_KEY) {
+                    return;
+                }
+
+                const nowTs = Date.now();
+                set((state) => {
+                    const completedItem = state.items.find(i => i.id === id);
+                    const routineId = completedItem?.routineId;
+
+                    return {
+                        items: state.items.map((i) =>
+                            i.id === id
+                                ? {
+                                    ...i,
+                                    status: 'complete' as const,
+                                    completedAt: currentTime,
+                                    updatedAt: nowTs
+                                }
+                                : i
+                        ),
+                        // Update lastCompletedAt on the associated routine (if any, not deleted)
+                        routines: routineId
+                            ? state.routines.map(r =>
+                                r.id === routineId && !r.deletedAt
+                                    ? { ...r, lastCompletedAt: currentTime }
+                                    : r
+                            )
+                            : state.routines,
+                    };
+                });
+                triggerSync();
+            },
+
+            uncompleteItem: (id: string) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => ({
+                    items: state.items.map((i) =>
+                        i.id === id
+                            ? {
+                                ...i,
+                                status: 'incomplete' as const,
+                                completedAt: undefined,
+                                // Reset progress counters so a stale-but-higher count
+                                // from another device can't re-trip isGoalMet during merge.
+                                ...(i.completedCount !== undefined ? { completedCount: 0 } : {}),
+                                ...(i.minutes !== undefined ? { minutes: 0 } : {}),
+                                updatedAt: nowTs
+                            }
+                            : i
+                    ),
+                }));
+                triggerSync();
+            },
+
+            startItem: (id: string) => {
+                const { getPresentWeek, triggerSync } = get();
+                const presentWeek = getPresentWeek();
+                const nowTs = Date.now();
+
+                set((state) => {
+                    const item = state.items.find((i) => i.id === id);
+                    if (!item || item.week === presentWeek) return state;
+
+                    const presentIncomplete = state.items.filter(
+                        (i) => i.week === presentWeek && i.status === 'incomplete' && !i.deletedAt
+                    );
+                    const maxOrder = Math.max(0, ...presentIncomplete.map((i) => i.orderIndex));
+
+                    return {
+                        items: state.items.map((i) =>
+                            i.id === id
+                                ? {
+                                    ...i,
+                                    week: presentWeek,
+                                    orderIndex: maxOrder + 1,
+                                    updatedAt: nowTs
+                                }
+                                : i
+                        ),
+                    };
+                });
+                triggerSync();
+            },
+
+            incrementProgress: (id: string, minutes: number) => {
+                const { currentTime, triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => {
+                    let completedRoutineId: string | undefined;
+                    const updatedItems = state.items.map((item) => {
+                        if (item.id !== id) return item;
+
+                        const newMinutes = (item.minutes ?? 0) + minutes;
+                        const minutesGoal = item.minutesGoal ?? 0;
+                        const minutesMet = minutesGoal === 0 || newMinutes >= minutesGoal;
+                        const countMet = !item.targetCount || (item.completedCount ?? 0) >= item.targetCount;
+
+                        if (minutesMet && countMet && item.status === 'incomplete') {
+                            completedRoutineId = item.routineId;
+                            return {
+                                ...item,
+                                minutes: newMinutes,
+                                status: 'complete' as const,
+                                completedAt: currentTime,
+                                updatedAt: nowTs
+                            };
+                        }
+
+                        return { ...item, minutes: newMinutes, updatedAt: nowTs };
+                    });
+
+                    return {
+                        items: updatedItems,
+                        routines: completedRoutineId
+                            ? state.routines.map(r =>
+                                r.id === completedRoutineId && !r.deletedAt
+                                    ? { ...r, lastCompletedAt: currentTime }
+                                    : r
+                            )
+                            : state.routines,
+                    };
+                });
+                triggerSync();
+            },
+
+            incrementOccurrence: (id: string) => {
+                const { currentTime, triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => {
+                    let completedRoutineId: string | undefined;
+                    const updatedItems = state.items.map((item) => {
+                        if (item.id !== id) return item;
+
+                        const currentCount = item.completedCount ?? 0;
+                        const targetCount = item.targetCount ?? 1;
+                        const newCount = currentCount + 1;
+
+                        const countMet = newCount >= targetCount;
+                        const minutesMet = !item.minutesGoal || (item.minutes ?? 0) >= item.minutesGoal;
+
+                        if (countMet && minutesMet) {
+                            completedRoutineId = item.routineId;
+                            return {
+                                ...item,
+                                completedCount: newCount,
+                                status: 'complete' as const,
+                                completedAt: currentTime,
+                                updatedAt: nowTs
+                            };
+                        }
+
+                        return {
+                            ...item,
+                            completedCount: newCount,
+                            updatedAt: nowTs
+                        };
+                    });
+
+                    return {
+                        items: updatedItems,
+                        routines: completedRoutineId
+                            ? state.routines.map(r =>
+                                r.id === completedRoutineId && !r.deletedAt
+                                    ? { ...r, lastCompletedAt: currentTime }
+                                    : r
+                            )
+                            : state.routines,
+                    };
+                });
+                triggerSync();
+            },
+
+            decrementOccurrence: (id: string) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => ({
+                    items: state.items.map((item) => {
+                        if (item.id !== id) return item;
+
+                        const currentCount = item.completedCount ?? 0;
+                        if (currentCount <= 0) return item;
+
+                        return {
+                            ...item,
+                            completedCount: currentCount - 1,
+                            status: 'incomplete' as const,
+                            completedAt: undefined,
+                            updatedAt: nowTs
+                        };
+                    }),
+                }));
+                triggerSync();
+            },
+
+            reorderItem: (id: string, newOrderIndex: number, newWeek?: WeekKey) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => {
+                    const item = state.items.find((i) => i.id === id);
+                    if (!item) return state;
+
+                    const targetWeek = newWeek ?? item.week;
+
+                    const weekItems = state.items
+                        .filter((i) => i.week === targetWeek && !i.archived && i.id !== id && !i.deletedAt)
+                        .sort((a, b) => a.orderIndex - b.orderIndex);
+
+                    const reorderedItems = [...weekItems];
+                    const insertIndex = Math.min(newOrderIndex, reorderedItems.length);
+                    reorderedItems.splice(insertIndex, 0, { ...item, week: targetWeek });
+
+                    const updates = new Map<string, { orderIndex: number; week: WeekKey; updatedAt: number }>();
+                    reorderedItems.forEach((i, idx) => {
+                        updates.set(i.id, { orderIndex: idx, week: targetWeek, updatedAt: nowTs });
+                    });
+
+                    return {
+                        items: state.items.map((i) => {
+                            const update = updates.get(i.id);
+                            if (update) {
+                                const updated = { ...i, ...update };
+                                // Clear scheduled-task metadata when moving to Ideas
+                                if (targetWeek === IDEAS_WEEK_KEY && i.week !== IDEAS_WEEK_KEY) {
+                                    updated.originalWeek = undefined;
+                                    updated.status = 'incomplete';
+                                    updated.completedAt = undefined;
+                                }
+                                return updated;
+                            }
+                            return i;
+                        }),
+                    };
+                });
+                triggerSync();
+            },
+
+            moveToWeek: (id: string, week: WeekKey) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => {
+                    const item = state.items.find((i) => i.id === id);
+                    if (!item) return state;
+
+                    const weekIncomplete = state.items.filter(
+                        (i) => i.week === week && i.status === 'incomplete' && !i.deletedAt
+                    );
+                    const maxOrder = Math.max(0, ...weekIncomplete.map((i) => i.orderIndex));
+
+                    return {
+                        items: state.items.map((i) =>
+                            i.id === id
+                                ? { ...i, week, orderIndex: maxOrder + 1, updatedAt: nowTs }
+                                : i
+                        ),
+                    };
+                });
+                triggerSync();
+            },
+
+            addItem: (title: string, week: WeekKey, orderIndex: number, options?: { minutesGoal?: number; targetCount?: number; dueDateISO?: string }) => {
+                const { triggerSync } = get();
+                const id = `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                const nowTs = Date.now();
+
+                set((state) => {
+                    const updatedItems = state.items.map((item) => {
+                        if (item.week === week && !item.archived && !item.deletedAt && item.orderIndex >= orderIndex) {
+                            return { ...item, orderIndex: item.orderIndex + 1, updatedAt: nowTs };
+                        }
+                        return item;
+                    });
+
+                    const newItem: Item = {
+                        id,
+                        title,
+                        week,
+                        status: 'incomplete',
+                        orderIndex,
+                        ...(options?.minutesGoal && { minutesGoal: options.minutesGoal, minutes: 0 }),
+                        ...(options?.targetCount && options.targetCount > 1 && { targetCount: options.targetCount, completedCount: 0 }),
+                        ...(options?.dueDateISO && { hasDueDate: true, dueDateISO: options.dueDateISO }),
+                        updatedAt: nowTs
+                    };
+
+                    return { items: [...updatedItems, newItem] };
+                });
+                triggerSync();
+                return id;
+            },
+
+            updateItem: (id: string, updates: { title?: string; minutesGoal?: number; targetCount?: number; dueDateISO?: string; notes?: string; docked?: boolean }) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => ({
+                    items: state.items.map((item) => {
+                        if (item.id !== id) return item;
+
+                        const updated = { ...item, updatedAt: nowTs };
+
+                        if (updates.title !== undefined) updated.title = updates.title;
+                        if (updates.minutesGoal !== undefined) {
+                            updated.minutesGoal = updates.minutesGoal;
+                            if (updates.minutesGoal > 0 && updated.minutes === undefined) {
+                                updated.minutes = 0;
+                            }
+                        }
+                        if (updates.targetCount !== undefined) {
+                            updated.targetCount = updates.targetCount > 1 ? updates.targetCount : undefined;
+                            if (updates.targetCount > 1 && updated.completedCount === undefined) {
+                                updated.completedCount = 0;
+                            }
+                        }
+                        // Use 'in' so an explicit `dueDateISO: undefined` clears
+                        // the date. Checking `!== undefined` swallowed clears
+                        // because TaskCard always spreads the field.
+                        if ('dueDateISO' in updates) {
+                            updated.dueDateISO = updates.dueDateISO || undefined;
+                            updated.hasDueDate = !!updates.dueDateISO;
+                        }
+                        if (updates.notes !== undefined) {
+                            updated.notes = updates.notes.slice(0, 1200) || undefined;
+                        }
+                        if (updates.docked !== undefined) {
+                            updated.docked = updates.docked;
+                        }
+
+                        const minutesMet = !updated.minutesGoal || (updated.minutes ?? 0) >= updated.minutesGoal;
+                        const countMet = !updated.targetCount || (updated.completedCount ?? 0) >= updated.targetCount;
+                        const requirementsMet = minutesMet && countMet;
+
+                        if (updated.status === 'complete' && !requirementsMet) {
+                            updated.status = 'incomplete';
+                            updated.completedAt = undefined;
+                        }
+
+                        return updated;
+                    }),
+                }));
+                triggerSync();
+            },
+
+            deleteRoutine: (id: string, removeRelatedTasks: boolean) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => {
+                    const routine = state.routines.find(r => r.id === id);
+                    if (!routine) return state;
+
+                    let updatedItems = state.items;
+
+                    if (removeRelatedTasks) {
+                        updatedItems = state.items.map(item => {
+                            if (item.routineId !== id) return item;
+                            const hasProgress = (item.minutes && item.minutes > 0) ||
+                                (item.completedCount && item.completedCount > 0) ||
+                                item.status !== 'incomplete';
+                            if (!hasProgress) {
+                                return { ...item, deletedAt: nowTs, updatedAt: nowTs };
+                            }
+                            return item;
+                        });
+                    }
+
+                    const updatedRoutines = state.routines.map(r =>
+                        r.id === id ? { ...r, deletedAt: nowTs, updatedAt: nowTs } : r
+                    );
+
+                    return {
+                        routines: updatedRoutines,
+                        items: updatedItems,
+                    };
+                });
+                triggerSync();
+            },
+
+            addRoutine: (routineData: Omit<Routine, 'id'>) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                const id = `routine-${nowTs}-${Math.random().toString(36).substr(2, 9)}`;
+                const routine: Routine = { ...routineData, id, updatedAt: nowTs };
+
+                set((state) => ({
+                    routines: [...state.routines, routine],
+                }));
+                triggerSync();
+                return id;
+            },
+
+            updateRoutine: (id: string, updates: Partial<Routine>, overwriteModifiedNotes?: boolean) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => {
+                    const routineIndex = state.routines.findIndex(r => r.id === id);
+                    if (routineIndex === -1) return state;
+
+                    const updatedRoutine = { ...state.routines[routineIndex], ...updates, updatedAt: nowTs };
+                    const newRoutines = [...state.routines];
+                    newRoutines[routineIndex] = updatedRoutine;
+
+                    const itemsAfterRemoval = removeOutdatedRoutineTasks(updatedRoutine, state.items);
+
+                    // Handle note updates with overwrite option
+                    let updatedItems = updateRoutineTasks(updatedRoutine, itemsAfterRemoval);
+
+                    // If overwriteModifiedNotes is true, force update notes on all incomplete tasks
+                    if (overwriteModifiedNotes && updates.notes !== undefined) {
+                        updatedItems = updatedItems.map(item => {
+                            if (item.routineId !== id) return item;
+                            if (item.status !== 'incomplete') return item;
+                            if (item.deletedAt) return item;
+                            return {
+                                ...item,
+                                notes: updates.notes,
+                                inheritedNotes: updates.notes,
+                                updatedAt: nowTs,
+                            };
+                        });
+                    }
+
+                    return {
+                        routines: newRoutines,
+                        items: updatedItems,
+                    };
+                });
+                triggerSync();
+            },
+
+            runRoutineProposalsMigrationV1: () => {
+                if (get().routineProposalsMigrationV1Done) return;
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => {
+                    const presentWeek = getWeekKey(state.currentTime);
+                    // Soft-delete past-week incomplete routine items. Filtering
+                    // them out instead would let mergeEntities resurrect them
+                    // from the server on the next hydrate.
+                    const updatedItems = state.items.map(item => {
+                        if (!item.routineId) return item;
+                        if (item.deletedAt) return item;
+                        if (item.status === 'complete') return item;
+                        if (item.week === IDEAS_WEEK_KEY) return item;
+                        if (compareWeekKeys(item.week, presentWeek) >= 0) return item;
+                        return { ...item, deletedAt: nowTs, updatedAt: nowTs };
+                    });
+                    return { items: updatedItems, routineProposalsMigrationV1Done: true, updatedAt: nowTs };
+                });
+                triggerSync();
+            },
+
+            // Soft-delete every incomplete routine task across all weeks.
+            // Pre-redesign, routines auto-spawned tasks into 12 months of
+            // future weeks. Those stale items now interfere with the new
+            // queue model (carry-forward + projected completion). Completed
+            // tasks are preserved for history. Soft-delete (not filter)
+            // matters so the deletion syncs through merge.
+            runRoutineProposalsMigrationV2: () => {
+                if (get().routineProposalsMigrationV2Done) return;
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => {
+                    const updatedItems = state.items.map(item => {
+                        if (!item.routineId) return item;
+                        if (item.deletedAt) return item;
+                        if (item.status === 'complete') return item;
+                        if (item.week === IDEAS_WEEK_KEY) return item;
+                        return { ...item, deletedAt: nowTs, updatedAt: nowTs };
+                    });
+                    return { items: updatedItems, routineProposalsMigrationV2Done: true, updatedAt: nowTs };
+                });
+                triggerSync();
+            },
+
+            // Manual rescue lever: clears the migration latches and re-runs
+            // V1 + V2. Use when state ends up weird (e.g., after restoring a
+            // backup whose flags don't reflect the actual item set).
+            forceRerunCleanupMigrations: () => {
+                const { runRoutineProposalsMigrationV1, runRoutineProposalsMigrationV2 } = get();
+                set({
+                    routineProposalsMigrationV1Done: false,
+                    routineProposalsMigrationV2Done: false,
+                });
+                runRoutineProposalsMigrationV1();
+                runRoutineProposalsMigrationV2();
+            },
+
+            // Hard-delete soft-deleted items older than the retention window.
+            // Soft-deletes accumulate forever otherwise — every dismissed
+            // routine instance, every cleared task, and every migration's
+            // wipe stays in the JSON. After 30 days the merge layer no longer
+            // needs them as deletion evidence.
+            purgeStaleSoftDeletes: () => {
+                const { triggerSync } = get();
+                const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+                let purged = 0;
+                set((state) => {
+                    const items = state.items.filter(i => !(i.deletedAt && i.deletedAt < cutoff));
+                    purged = state.items.length - items.length;
+                    if (purged === 0) return state;
+                    return { items };
+                });
+                if (purged > 0) triggerSync();
+            },
+
+            acceptProposal: (routineId: string, week: WeekKey, insertIndex?: number, stageForDrag?: boolean) => {
+                const { triggerSync, reorderItem } = get();
+                const nowTs = Date.now();
+
+                const routine = get().routines.find(r => r.id === routineId && !r.deletedAt);
+                if (!routine) return;
+
+                const taskId = `${routineId}-${week}`;
+                const existing = get().items.find(i => i.id === taskId);
+                // Already alive — nothing to do. If it was soft-deleted in a prior
+                // session, resurrect it in place rather than bailing, otherwise
+                // the proposal drag would never materialise a task.
+                if (existing && !existing.deletedAt) return;
+
+                // stageForDrag: park the task in the sidebar sentinel so the
+                // timeline isn't shifted until the user's drag cursor reaches
+                // a real week — mirrors how an Ideas card only enters the
+                // timeline on hover, not at drag start.
+                const storedWeek = stageForDrag ? PROPOSALS_CONTAINER_KEY : week;
+
+                const task: Item = {
+                    id: taskId,
+                    title: routine.title,
+                    routineId: routine.id,
+                    week: storedWeek,
+                    status: 'incomplete',
+                    orderIndex: 999999,
+                    notes: routine.notes,
+                    inheritedNotes: routine.notes,
+                    updatedAt: nowTs,
+                };
+
+                if (routine.taskType === 'time-tracked' && routine.minutesGoal) {
+                    task.minutesGoal = routine.minutesGoal;
+                    task.minutes = 0;
+                } else if (routine.taskType === 'multi-occurrence' && routine.targetCount) {
+                    task.targetCount = routine.targetCount;
+                    task.completedCount = 0;
+                }
+
+                set((state) => ({
+                    items: existing
+                        ? state.items.map(i => i.id === taskId ? task : i)
+                        : [...state.items, task],
+                }));
+
+                if (insertIndex !== undefined && !stageForDrag) {
+                    reorderItem(taskId, insertIndex, week);
+                }
+
+                triggerSync();
+            },
+
+            rolloverPastItems: () => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => {
+                    const presentWeek = getWeekKey(state.currentTime);
+
+                    // Universal carry-over (brainstorm Q20): every incomplete
+                    // task in a past week — routine-attached or manual —
+                    // moves into the present week. State (completedCount,
+                    // minutes, notes, targetCount) is preserved untouched.
+                    // Carry is indefinite; users delete tasks they want gone.
+                    const carryItems = state.items
+                        .filter(item => {
+                            if (item.deletedAt) return false;
+                            if (item.archived) return false;
+                            if (item.status === 'complete') return false;
+                            if (item.week === IDEAS_WEEK_KEY) return false;
+                            return compareWeekKeys(item.week, presentWeek) < 0;
+                        })
+                        .sort((a, b) => {
+                            const cmp = compareWeekKeys(a.week, b.week);
+                            if (cmp !== 0) return cmp;
+                            return a.orderIndex - b.orderIndex;
+                        });
+
+                    if (carryItems.length === 0) return state;
+
+                    // Pin migrated items above existing present-week items so
+                    // missed work is the first thing the user sees.
+                    const presentMinOrder = state.items
+                        .filter(i => !i.archived && !i.deletedAt && i.week === presentWeek)
+                        .reduce((min, i) => Math.min(min, i.orderIndex), 0);
+                    let nextOrder = presentMinOrder - carryItems.length;
+
+                    const newOrderById = new Map<string, number>();
+                    for (const item of carryItems) {
+                        newOrderById.set(item.id, nextOrder++);
+                    }
+
+                    const updatedItems = state.items.map(item => {
+                        const order = newOrderById.get(item.id);
+                        if (order === undefined) return item;
+                        return {
+                            ...item,
+                            week: presentWeek,
+                            originalWeek: item.originalWeek || item.week,
+                            orderIndex: order,
+                            updatedAt: nowTs,
+                        };
+                    });
+
+                    return { items: updatedItems };
+                });
+                triggerSync();
+            },
+
+            executeRollover: () => {
+                const { triggerSync } = get();
+                set((state) => {
+                    const now = dayjs(state.currentTime);
+                    const daysUntilSunday = (7 - now.day()) % 7 || 7;
+                    const newTime = now.add(daysUntilSunday, 'day').startOf('day').toISOString();
+                    const oldPresentWeek = getWeekKey(state.currentTime);
+                    const newPresentWeek = getWeekKey(newTime);
+
+                    if (oldPresentWeek === newPresentWeek) {
+                        const advancedTime = dayjs(newTime).add(7, 'day').toISOString();
+                        const result = executeRolloverLogic(state, getWeekKey(advancedTime), advancedTime);
+                        return result;
+                    }
+
+                    return executeRolloverLogic(state, newPresentWeek, newTime);
+                });
+                triggerSync();
+            },
+
+            advanceTime: (days: number) => {
+                set((state) => ({
+                    currentTime: dayjs(state.currentTime).add(days, 'day').toISOString(),
+                }));
+                get().rolloverPastItems();
+                get().spawnCollectionNotes();  // Spawn collection notes for new visible weeks
+            },
+
+            setTime: (isoTime: string) => {
+                set({ currentTime: isoTime });
+            },
+
+            toggleAllowUncomplete: () => {
+                set((state) => ({ allowUncomplete: !state.allowUncomplete }));
+            },
+
+            resetData: () => {
+                // Reset to empty state
+                set({
+                    items: [],
+                    routines: [],
+                    dataVersion: 1,
+                });
+                const { triggerSync } = get();
+                triggerSync();
+            },
+
+            toggleTimeFreeze: () => {
+                set((state) => ({ isTimeFrozen: !state.isTimeFrozen }));
+            },
+
+            resetTime: () => {
+                set({
+                    currentTime: new Date().toISOString(),
+                    isTimeFrozen: false
+                });
+            },
+
+            archiveItem: (id: string) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => ({
+                    items: state.items.map((item) =>
+                        item.id === id
+                            ? { ...item, archived: true, updatedAt: nowTs }
+                            : item
+                    ),
+                }));
+                triggerSync();
+            },
+
+            deleteItem: (id: string) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => ({
+                    items: state.items.map(item => item.id === id ? { ...item, deletedAt: nowTs, updatedAt: nowTs } : item),
+                }));
+                triggerSync();
+            },
+
+            unarchiveItem: (id: string) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => {
+                    const item = state.items.find((i) => i.id === id);
+                    if (!item) return state;
+                    const updatedItems = state.items.map((i) => {
+                        if (i.id === id) {
+                            return { ...i, archived: false, orderIndex: 0, updatedAt: nowTs };
+                        }
+                        if (i.week === item.week && !i.archived && !i.deletedAt) {
+                            return { ...i, orderIndex: i.orderIndex + 1, updatedAt: nowTs };
+                        }
+                        return i;
+                    });
+                    return { items: updatedItems };
+                });
+                triggerSync();
+            },
+
+            getPresentWeek: () => {
+                const { currentTime } = get();
+                return getWeekKey(currentTime);
+            },
+
+            getVisibleItems: () => {
+                const { items } = get();
+                return items
+                    .filter((item) =>
+                        !item.archived &&
+                        !item.deletedAt &&
+                        item.week !== IDEAS_WEEK_KEY &&
+                        // Staged proposal drags live in the sidebar sentinel.
+                        // They must not appear in timeline sorts — compareWeekKeys
+                        // throws on non-week-key strings.
+                        item.week !== PROPOSALS_CONTAINER_KEY
+                    )
+                    .sort((a, b) => {
+                        const weekCompare = compareWeekKeys(a.week, b.week);
+                        if (weekCompare !== 0) return weekCompare;
+                        return a.orderIndex - b.orderIndex;
+                    });
+            },
+
+            getIdeasItems: () => {
+                const { items } = get();
+                return items
+                    .filter((item) => !item.archived && !item.deletedAt && item.week === IDEAS_WEEK_KEY)
+                    .sort((a, b) => a.orderIndex - b.orderIndex);
+            },
+
+            getArchivedItems: () => {
+                const { items } = get();
+                return items
+                    .filter((item) => item.archived && !item.deletedAt)
+                    .sort((a, b) => {
+                        if (a.completedAt && b.completedAt) {
+                            return new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime();
+                        }
+                        return 0;
+                    });
+            },
+
+            // ==================== Collection Actions ====================
+
+            addCollection: (name: string) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                const id = `collection-${nowTs}-${Math.random().toString(36).substr(2, 9)}`;
+                const collection: Collection = { id, name, updatedAt: nowTs };
+                set((state) => ({ collections: [...state.collections, collection] }));
+                triggerSync();
+                return id;
+            },
+
+            updateCollection: (id: string, updates: Partial<Collection>) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => ({
+                    collections: state.collections.map((c) =>
+                        c.id === id ? { ...c, ...updates, updatedAt: nowTs } : c
+                    ),
+                }));
+                triggerSync();
+            },
+
+            deleteCollection: (id: string) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => {
+                    // Soft-delete collection and all its items
+                    const updatedCollections = state.collections.map((c) =>
+                        c.id === id ? { ...c, deletedAt: nowTs, updatedAt: nowTs } : c
+                    );
+                    const updatedItems = state.collectionItems.map((item) =>
+                        item.collectionId === id ? { ...item, deletedAt: nowTs, updatedAt: nowTs } : item
+                    );
+                    // Remove orphaned week notes
+                    const cleanedNotes = removeOrphanedWeekNotes(state.weekNotes, updatedItems);
+                    return {
+                        collections: updatedCollections,
+                        collectionItems: updatedItems,
+                        weekNotes: cleanedNotes,
+                    };
+                });
+                triggerSync();
+            },
+
+            addCollectionItem: (collectionId: string, itemData: Omit<CollectionItem, 'id' | 'collectionId'>) => {
+                const { triggerSync, spawnCollectionNotes: spawnNotes } = get();
+                const nowTs = Date.now();
+                const id = `colitem-${nowTs}-${Math.random().toString(36).substr(2, 9)}`;
+                const item: CollectionItem = { ...itemData, id, collectionId, updatedAt: nowTs };
+                set((state) => ({ collectionItems: [...state.collectionItems, item] }));
+                spawnNotes(); // Spawn notes for the new item
+                triggerSync();
+                return id;
+            },
+
+            updateCollectionItem: (id: string, updates: Partial<CollectionItem>, overwriteModifiedNotes?: boolean) => {
+                const { triggerSync, spawnCollectionNotes: spawnNotes } = get();
+                const nowTs = Date.now();
+                set((state) => {
+                    // Update the collection item
+                    const updatedItems = state.collectionItems.map((item) =>
+                        item.id === id ? { ...item, ...updates, updatedAt: nowTs } : item
+                    );
+
+                    // Find the updated item
+                    const updatedItem = updatedItems.find((item) => item.id === id);
+                    if (!updatedItem) {
+                        return { collectionItems: updatedItems };
+                    }
+
+                    // Remove WeekNotes that no longer match the schedule
+                    const notesAfterRemoval = removeOutdatedWeekNotes(state.weekNotes, updatedItem);
+
+                    // Propagate changes to existing WeekNotes (like routines do)
+                    const updatedWeekNotes = updateWeekNotesFromCollectionItem(
+                        notesAfterRemoval,
+                        updatedItem,
+                        overwriteModifiedNotes || false
+                    ).map(note => note.collectionItemId === id ? { ...note, updatedAt: nowTs } : note);
+
+                    return {
+                        collectionItems: updatedItems,
+                        weekNotes: updatedWeekNotes,
+                    };
+                });
+                // Spawn any new notes for visible weeks
+                spawnNotes();
+                triggerSync();
+            },
+
+            deleteCollectionItem: (id: string) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => {
+                    const updatedItems = state.collectionItems.map((item) =>
+                        item.id === id ? { ...item, deletedAt: nowTs, updatedAt: nowTs } : item
+                    );
+                    const cleanedNotes = removeOrphanedWeekNotes(state.weekNotes, updatedItems);
+                    return {
+                        collectionItems: updatedItems,
+                        weekNotes: cleanedNotes,
+                    };
+                });
+                triggerSync();
+            },
+
+            // ==================== WeekNote Actions ====================
+
+            addWeekNote: (noteData: Omit<WeekNote, 'id'>) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                const id = `weeknote-${nowTs}-${Math.random().toString(36).substr(2, 9)}`;
+                const note: WeekNote = { ...noteData, id, updatedAt: nowTs };
+                set((state) => ({ weekNotes: [...state.weekNotes, note] }));
+                triggerSync();
+                return id;
+            },
+
+            updateWeekNote: (id: string, updates: Partial<Omit<WeekNote, 'id'>>) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => ({
+                    weekNotes: state.weekNotes.map((note) =>
+                        note.id === id ? { ...note, ...updates, updatedAt: nowTs } : note
+                    ),
+                }));
+                triggerSync();
+            },
+
+            deleteWeekNote: (id: string) => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => ({
+                    weekNotes: state.weekNotes.map((note) =>
+                        note.id === id ? { ...note, deletedAt: nowTs, updatedAt: nowTs } : note
+                    ),
+                }));
+                triggerSync();
+            },
+
+            spawnCollectionNotes: () => {
+                const { triggerSync } = get();
+                const nowTs = Date.now();
+                set((state) => {
+                    const visibleWeeks = getVisibleWeeks(state.currentTime);
+                    const newNotes = spawnCollectionNotes(
+                        state.collectionItems,
+                        visibleWeeks,
+                        state.weekNotes
+                    );
+                    const newNotesStamped = newNotes.map((n) => ({ ...n, updatedAt: nowTs }));
+                    return { weekNotes: [...state.weekNotes, ...newNotesStamped] };
+                });
+                if (get().weekNotes.length > 0) { // Only sync if something changed
+                    triggerSync();
+                }
+            },
+
+            getWeekNotes: (week: WeekKey) => {
+                const { weekNotes } = get();
+                return weekNotes
+                    .filter((note) => note.week === week && !note.deletedAt)
+                    .sort((a, b) => {
+                        // Sort by date if available, then by title
+                        if (a.dateISO && b.dateISO) {
+                            return a.dateISO.localeCompare(b.dateISO);
+                        }
+                        return a.title.localeCompare(b.title);
+                    });
+            },
+        }),
+        {
+            name: 'task-list-storage',
+            partialize: (state) => ({
+                // Never persist staged proposal drags — they're drag-session
+                // transient and would crash compareWeekKeys on rehydrate.
+                items: state.items.filter(i => i.week !== PROPOSALS_CONTAINER_KEY),
+                routines: state.routines,
+                collections: state.collections,
+                collectionItems: state.collectionItems,
+                weekNotes: state.weekNotes,
+                currentTime: state.currentTime,
+                allowUncomplete: state.allowUncomplete,
+                userTimezone: state.userTimezone,
+                lastRolledWeek: state.lastRolledWeek,
+                dataVersion: state.dataVersion,
+                // Without these, the destructive migrations re-run on every
+                // refresh and wipe freshly-accepted routine tasks.
+                routineProposalsMigrationV1Done: state.routineProposalsMigrationV1Done,
+                routineProposalsMigrationV2Done: state.routineProposalsMigrationV2Done,
+            }),
+        }
+    )
+);

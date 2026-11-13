@@ -1,0 +1,22 @@
+# Dependencies
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Build outputs
+dist
+build
+
+# Environment keys
+.env
+.env.local
+
+# Git
+.git
+.gitignore
+
+# OS
+.DS_Store
+
+# Brain
+brain
